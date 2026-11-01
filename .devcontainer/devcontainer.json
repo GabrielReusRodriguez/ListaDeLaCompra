@@ -1,0 +1,17 @@
+{
+  "name": "ListaDeLaCompra",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:20",
+  "forwardPorts": [5173],
+  "portsAttributes": {
+    "5173": {
+      "label": "Servidor de desarrollo de Vite",
+      "onAutoForward": "notify"
+    }
+  },
+  "postCreateCommand": "if [ -f package.json ]; then npm install; else echo 'package.json pendiente de crear: se omite npm install'; fi",
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode"]
+    }
+  }
+}
