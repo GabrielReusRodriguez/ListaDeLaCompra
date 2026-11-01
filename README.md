@@ -42,6 +42,12 @@ Abre `http://localhost:5173`. Usa `localhost` y no la IP de la máquina: Web Cry
 | `npm run lint`                    | ESLint sin avisos permitidos.                               |
 | `npm run format` / `format:check` | Formatea o comprueba el formato con Prettier.               |
 
+## CI/CD y despliegue
+
+- **CI (GitHub Actions)**: en cada push y pull request a `main` se ejecutan `lint`, `format:check`, las pruebas (`vitest --run`) y el `build` (`.github/workflows/ci.yml`).
+- **Dependabot**: revisa semanalmente las dependencias npm y abre PRs con las actualizaciones (`.github/dependabot.yml`).
+- **Despliegue (Cloudflare Pages)**: conecta el repositorio en Workers & Pages → Pages con build command `npm run build` y directorio de salida `dist`. El build usa rutas relativas (`base: './'` en `vite.config.ts`), así que funciona en cualquier subdominio `*.pages.dev`.
+
 ## Estructura
 
 ```text
