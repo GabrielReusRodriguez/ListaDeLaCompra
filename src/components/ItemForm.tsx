@@ -1,142 +1,188 @@
-import { useState } from 'react';
-import { Item, Priority, Store } from '../types';
-import { useTranslation } from '../hooks';
-import { useShopping } from '../context/ShoppingContext';
+import { useId, useState, type FormEvent } from 'react';
+import { useTranslation } from '../hooks/useTranslation';
+import {
+  DEFAULT_PRIORITY,
+  PRIORITIES,
+  STORE_CATALOG,
+  isCatalogStore,
+  type Item,
+  type ItemInput,
+  type Priority,
+  type ShoppingList,
+} from '../types';
 
 interface ItemFormProps {
+  lists: ShoppingList[];
+  /** Lista preseleccionada; si falta, se usa la primera. */
+  defaultListId?: string;
   item?: Item;
-  listId: string;
-  onClose: () => void;
+  onSubmit: (input: ItemInput) => void;
+  onCancel: () => void;
 }
 
-export function ItemForm({ item, listId, onClose }: ItemFormProps) {
+const CUSTOM_STORE = '__custom__';
+
+export function ItemForm({ lists, defaultListId, item, onSubmit, onCancel }: ItemFormProps) {
   const { t } = useTranslation();
-  const { addItem, updateItem } = useShopping();
+  const formId = useId();
 
-  const [name, setName] = useState(item?.name || '');
-  const [quantity, setQuantity] = useState(item?.quantity || 1);
-  const [unit, setUnit] = useState(item?.unit || '');
-  const [store, setStore] = useState<Store | string>(item?.store || 'supermercado');
-  const [priority, setPriority] = useState<Priority>(item?.priority || 'media');
+  const initialStore = item?.store ?? STORE_CATALOG[0];
+  const [name, setName] = useState(item?.name ?? '');
+  const [quantity, setQuantity] = useState(String(item?.quantity ?? 1));
+  const [unit, setUnit] = useState(item?.unit ?? '');
+  const [listId, setListId] = useState(item?.listId ?? defaultListId ?? lists[0]?.id ?? '');
+  const [priority, setPriority] = useState<Priority>(item?.priority ?? DEFAULT_PRIORITY);
+  const [storeChoice, setStoreChoice] = useState(
+    isCatalogStore(initialStore) ? initialStore : CUSTOM_STORE,
+  );
+  const [customStore, setCustomStore] = useState(isCatalogStore(initialStore) ? '' : initialStore);
+  const [error, setError] = useState<string | null>(null);
 
-  const stores: Store[] = ['supermercado', 'panaderia', 'fruteria', 'carniceria', 'centro comercial', 'otros'];
-  const priorities: Priority[] = ['alta', 'media', 'baja'];
+  const handleSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    const parsedQuantity = Number(quantity.replace(',', '.'));
+    const store = storeChoice === CUSTOM_STORE ? customStore.trim() : storeChoice;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
     if (!name.trim()) {
-      alert(t('itemName') + ' ' + t('passwordRequired'));
+      setError(t.item.invalidName);
+      return;
+    }
+    if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+      setError(t.item.invalidQuantity);
+      return;
+    }
+    if (!store) {
+      setError(t.item.invalidStore);
+      return;
+    }
+    if (!listId) {
+      setError(t.item.invalidList);
       return;
     }
 
-    const newItem = {
-      listId,
-      name: name.trim(),
-      quantity,
-      unit: unit.trim() || undefined,
-      store,
-      priority,
-    };
-
-    if (item) {
-      updateItem({ ...item, ...newItem, id: item.id });
-    } else {
-      addItem(newItem);
-    }
-
-    onClose();
+    setError(null);
+    onSubmit({ listId, name, quantity: parsedQuantity, unit, store, priority });
   };
 
   return (
-    <form onSubmit={handleSubmit} className="item-form">
-      <h2>{item ? t('edit') : t('newItem')}</h2>
-      
-      <div className="form-group">
-        <label htmlFor="name">{t('itemName')}</label>
+    <form className="form" onSubmit={handleSubmit} noValidate>
+      {error && (
+        <p className="form__error" role="alert">
+          {error}
+        </p>
+      )}
+
+      <div className="field">
+        <label htmlFor={`${formId}-name`}>{t.item.name}</label>
         <input
+          id={`${formId}-name`}
           type="text"
-          id="name"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(event) => setName(event.target.value)}
           required
+          autoComplete="off"
         />
       </div>
 
-      <div className="form-row">
-        <div className="form-group">
-          <label htmlFor="quantity">{t('quantity')}</label>
+      <div className="field-row">
+        <div className="field">
+          <label htmlFor={`${formId}-quantity`}>{t.item.quantity}</label>
           <input
+            id={`${formId}-quantity`}
             type="number"
-            id="quantity"
+            inputMode="decimal"
+            min="0"
+            step="any"
             value={quantity}
-            onChange={(e) => setQuantity(parseFloat(e.target.value) || 1)}
-            min="1"
-            step="0.01"
+            onChange={(event) => setQuantity(event.target.value)}
+            required
           />
         </div>
-        <div className="form-group">
-          <label htmlFor="unit">{t('unit')}</label>
+        <div className="field">
+          <label htmlFor={`${formId}-unit`}>{t.item.unit}</label>
           <input
+            id={`${formId}-unit`}
             type="text"
-            id="unit"
             value={unit}
-            onChange={(e) => setUnit(e.target.value)}
-            placeholder={t('unit')}
+            placeholder={t.item.unitPlaceholder}
+            onChange={(event) => setUnit(event.target.value)}
+            autoComplete="off"
           />
         </div>
       </div>
 
-      <div className="form-group">
-        <label htmlFor="store">{t('store')}</label>
+      <div className="field">
+        <label htmlFor={`${formId}-list`}>{t.item.list}</label>
         <select
-          id="store"
-          value={store}
-          onChange={(e) => setStore(e.target.value as Store | string)}
+          id={`${formId}-list`}
+          value={listId}
+          onChange={(event) => setListId(event.target.value)}
+          required
         >
-          {stores.map((s) => (
-            <option key={s} value={s}>
-              {s}
+          {lists.map((list) => (
+            <option key={list.id} value={list.id}>
+              {list.name}
             </option>
           ))}
-          <option value="custom">{t('storeOthers')}</option>
         </select>
-        {store === 'custom' && (
+      </div>
+
+      <div className="field">
+        <label htmlFor={`${formId}-store`}>{t.item.store}</label>
+        <select
+          id={`${formId}-store`}
+          value={storeChoice}
+          onChange={(event) => setStoreChoice(event.target.value)}
+        >
+          {STORE_CATALOG.map((store) => (
+            <option key={store} value={store}>
+              {t.store[store]}
+            </option>
+          ))}
+          <option value={CUSTOM_STORE}>{t.item.storeCustom}</option>
+        </select>
+      </div>
+
+      {storeChoice === CUSTOM_STORE && (
+        <div className="field">
+          <label htmlFor={`${formId}-custom-store`}>{t.item.storeCustom}</label>
           <input
+            id={`${formId}-custom-store`}
             type="text"
-            value={store}
-            onChange={(e) => setStore(e.target.value)}
-            placeholder={t('storeOthers')}
-            className="custom-store-input"
+            value={customStore}
+            placeholder={t.item.storeCustomPlaceholder}
+            onChange={(event) => setCustomStore(event.target.value)}
+            autoComplete="off"
           />
-        )}
-      </div>
+        </div>
+      )}
 
-      <div className="form-group">
-        <label htmlFor="priority">{t('priority')}</label>
-        <select
-          id="priority"
-          value={priority}
-          onChange={(e) => setPriority(e.target.value as Priority)}
-        >
-          {priorities.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
+      <fieldset className="field field--radio">
+        <legend>{t.item.priority}</legend>
+        <div className="radio-group">
+          {PRIORITIES.map((option) => (
+            <label key={option} className={`radio radio--${option}`}>
+              <input
+                type="radio"
+                name={`${formId}-priority`}
+                value={option}
+                checked={priority === option}
+                onChange={() => setPriority(option)}
+              />
+              <span>{t.priority[option]}</span>
+            </label>
           ))}
-        </select>
-      </div>
+        </div>
+      </fieldset>
 
-      <div className="form-actions">
-        <button type="button" onClick={onClose} className="btn btn-cancel">
-          {t('cancel')}
+      <div className="form__actions">
+        <button type="button" className="btn btn--ghost" onClick={onCancel}>
+          {t.common.cancel}
         </button>
-        <button type="submit" className="btn btn-primary">
-          {t('save')}
+        <button type="submit" className="btn btn--primary">
+          {t.common.save}
         </button>
       </div>
     </form>
   );
 }
-
-export default ItemForm;

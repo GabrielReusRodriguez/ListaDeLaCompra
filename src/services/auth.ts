@@ -1,92 +1,67 @@
-import { User } from '../types';
-import storage from './storage';
+import type { User } from '../types';
+import * as storage from './storage';
+import { constantTimeEqual, generateSalt, hashPassword, isCryptoAvailable } from './crypto';
 
-const ITERATIONS = 100000;
-const KEY_LENGTH = 256;
-const HASH_ALGORITHM = 'SHA-256';
+export type AuthError =
+  'user-exists' | 'invalid-credentials' | 'invalid-input' | 'crypto-unavailable';
 
-export async function generateSalt(): Promise<string> {
-  const array = new Uint8Array(16);
-  crypto.getRandomValues(array);
-  return btoa(String.fromCharCode(...array));
+export type AuthResult = { ok: true; user: User } | { ok: false; error: AuthError };
+
+export const USERNAME_PATTERN = /^[a-zA-Z0-9._-]{3,32}$/;
+export const MIN_PASSWORD_LENGTH = 6;
+
+export function validateUsername(username: string): boolean {
+  return USERNAME_PATTERN.test(username);
 }
 
-export async function hashPassword(password: string, salt: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(password),
-    { name: 'PBKDF2' },
-    false,
-    ['deriveBits']
-  );
-  
-  const derivedBits = await crypto.subtle.deriveBits(
-    {
-      name: 'PBKDF2',
-      salt: encoder.encode(salt),
-      iterations: ITERATIONS,
-      hash: HASH_ALGORITHM,
-    },
-    keyMaterial,
-    KEY_LENGTH
-  );
-  
-  const hashArray = Array.from(new Uint8Array(derivedBits));
-  return btoa(String.fromCharCode(...hashArray));
+export function validatePassword(password: string): boolean {
+  return password.length >= MIN_PASSWORD_LENGTH;
 }
 
-export async function registerUser(username: string, password: string): Promise<User | null> {
-  const existingUser = storage.getUser(username);
-  if (existingUser) {
-    return null;
+export async function registerUser(username: string, password: string): Promise<AuthResult> {
+  const name = username.trim();
+  if (!isCryptoAvailable()) {
+    return { ok: false, error: 'crypto-unavailable' };
+  }
+  if (!validateUsername(name) || !validatePassword(password)) {
+    return { ok: false, error: 'invalid-input' };
+  }
+  if (storage.getUser(name)) {
+    return { ok: false, error: 'user-exists' };
   }
 
-  const salt = await generateSalt();
+  const salt = generateSalt();
   const passwordHash = await hashPassword(password, salt);
-  const createdAt = Date.now();
-
-  const user: User = {
-    username,
-    salt,
-    passwordHash,
-    createdAt,
-  };
-
+  const user: User = { username: name, salt, passwordHash, createdAt: Date.now() };
   storage.saveUser(user);
-  return user;
+  storage.setSession(name);
+  return { ok: true, user };
 }
 
-export async function loginUser(username: string, password: string): Promise<User | null> {
-  const user = storage.getUser(username);
+export async function loginUser(username: string, password: string): Promise<AuthResult> {
+  const name = username.trim();
+  if (!isCryptoAvailable()) {
+    return { ok: false, error: 'crypto-unavailable' };
+  }
+  const user = storage.getUser(name);
   if (!user) {
-    return null;
+    return { ok: false, error: 'invalid-credentials' };
   }
-
   const hash = await hashPassword(password, user.salt);
-  if (hash !== user.passwordHash) {
-    return null;
+  if (!constantTimeEqual(hash, user.passwordHash)) {
+    return { ok: false, error: 'invalid-credentials' };
   }
-
-  return user;
+  storage.setSession(name);
+  return { ok: true, user };
 }
 
 export function logout(): void {
   storage.clearSession();
 }
 
-export function getActiveUser(): string | null {
-  return storage.getSession();
+export function getSessionUsername(): string | null {
+  const username = storage.getSession();
+  if (!username) return null;
+  // Si el usuario ya no existe, la sesión deja de ser válida.
+  return storage.getUser(username) ? username : null;
 }
-
-export function isAuthenticated(): boolean {
-  return getActiveUser() !== null;
-}
-
-export default {
-  registerUser,
-  loginUser,
-  logout,
-  getActiveUser,
-  isAuthenticated,
-};

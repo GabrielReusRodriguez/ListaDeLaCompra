@@ -1,172 +1,124 @@
-import { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
-import { ShoppingList, Item, ShoppingState, ShoppingAction } from '../types';
-import storage from '../services/storage';
-import { getActiveUser } from '../services/auth';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useReducer,
+  type ReactNode,
+} from 'react';
+import type { Item, ItemInput, ShoppingList } from '../types';
+import * as storage from '../services/storage';
+import { createId } from '../services/crypto';
+import {
+  applyItemInput,
+  buildItem,
+  buildList,
+  initialShoppingState,
+  shoppingReducer,
+  type ShoppingState,
+} from '../lib/shopping';
+import { useAuth } from './AuthContext';
 
-const initialState: ShoppingState = {
-  lists: [],
-  items: [],
-  activeListId: null,
-};
-
-function shoppingReducer(state: ShoppingState, action: ShoppingAction): ShoppingState {
-  switch (action.type) {
-    case 'SET_LISTS':
-      return { ...state, lists: action.payload };
-    case 'ADD_LIST':
-      return { ...state, lists: [...state.lists, action.payload] };
-    case 'UPDATE_LIST':
-      return {
-        ...state,
-        lists: state.lists.map(list =>
-          list.id === action.payload.id ? { ...list, name: action.payload.name } : list
-        ),
-      };
-    case 'DELETE_LIST':
-      return {
-        ...state,
-        lists: state.lists.filter(list => list.id !== action.payload),
-        items: state.items.filter(item => item.listId !== action.payload),
-        activeListId: state.activeListId === action.payload ? null : state.activeListId,
-      };
-    case 'SET_ITEMS':
-      return { ...state, items: action.payload };
-    case 'ADD_ITEM':
-      return { ...state, items: [...state.items, action.payload] };
-    case 'UPDATE_ITEM':
-      return {
-        ...state,
-        items: state.items.map(item =>
-          item.id === action.payload.id ? { ...action.payload, updatedAt: Date.now() } : item
-        ),
-      };
-    case 'DELETE_ITEM':
-      return { ...state, items: state.items.filter(item => item.id !== action.payload) };
-    case 'SET_ACTIVE_LIST':
-      return { ...state, activeListId: action.payload };
-    case 'MARK_AS_PURCHASED':
-      return { ...state, items: state.items.filter(item => item.id !== action.payload) };
-    default:
-      return state;
-  }
-}
-
-interface ShoppingContextType extends ShoppingState {
-  addList: (name: string) => void;
-  updateList: (id: string, name: string) => void;
+export interface ShoppingContextValue extends ShoppingState {
+  addList: (name: string) => ShoppingList | null;
+  renameList: (id: string, name: string) => void;
   deleteList: (id: string) => void;
-  addItem: (item: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>) => void;
-  updateItem: (item: Item) => void;
+  addItem: (input: ItemInput) => Item | null;
+  updateItem: (id: string, input: ItemInput) => void;
   deleteItem: (id: string) => void;
   markAsPurchased: (id: string) => void;
-  setActiveList: (id: string | null) => void;
-  saveData: () => void;
-  loadData: () => void;
 }
 
-const ShoppingContext = createContext<ShoppingContextType | undefined>(undefined);
+export const ShoppingContext = createContext<ShoppingContextValue | null>(null);
 
 interface ShoppingProviderProps {
   children: ReactNode;
 }
 
 export function ShoppingProvider({ children }: ShoppingProviderProps) {
-  const [state, dispatch] = useReducer(shoppingReducer, initialState);
-
-  const username = getActiveUser();
+  const { username } = useAuth();
+  const [state, dispatch] = useReducer(shoppingReducer, initialShoppingState);
 
   useEffect(() => {
-    if (username) {
-      loadData();
+    if (!username) {
+      dispatch({ type: 'RESET' });
+      return;
     }
+    dispatch({ type: 'LOAD', payload: storage.getData(username) });
   }, [username]);
 
-  const loadData = () => {
-    if (!username) return;
-    const data = storage.getAppData(username);
-    dispatch({ type: 'SET_LISTS', payload: data.lists });
-    dispatch({ type: 'SET_ITEMS', payload: data.items });
-  };
+  // Persistencia: cada cambio de datos se guarda en la clave del usuario activo.
+  useEffect(() => {
+    if (!username || !state.loaded) return;
+    storage.saveData(username, { lists: state.lists, items: state.items });
+  }, [username, state.loaded, state.lists, state.items]);
 
-  const saveData = () => {
-    if (!username) return;
-    const data = { lists: state.lists, items: state.items };
-    storage.saveAppData(username, data);
-  };
+  const addList = useCallback((name: string): ShoppingList | null => {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    const list = buildList(trimmed, Date.now(), createId());
+    dispatch({ type: 'ADD_LIST', payload: list });
+    return list;
+  }, []);
 
-  const addList = (name: string) => {
-    const newList: ShoppingList = {
-      id: crypto.randomUUID(),
-      name,
-      createdAt: Date.now(),
-    };
-    dispatch({ type: 'ADD_LIST', payload: newList });
-    saveData();
-  };
+  const renameList = useCallback((id: string, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    dispatch({ type: 'RENAME_LIST', payload: { id, name: trimmed } });
+  }, []);
 
-  const updateList = (id: string, name: string) => {
-    dispatch({ type: 'UPDATE_LIST', payload: { id, name } });
-    saveData();
-  };
-
-  const deleteList = (id: string) => {
+  const deleteList = useCallback((id: string) => {
     dispatch({ type: 'DELETE_LIST', payload: id });
-    saveData();
-  };
+  }, []);
 
-  const addItem = (item: Omit<Item, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const newItem: Item = {
-      ...item,
-      id: crypto.randomUUID(),
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    dispatch({ type: 'ADD_ITEM', payload: newItem });
-    saveData();
-  };
+  const addItem = useCallback((input: ItemInput): Item | null => {
+    if (!input.name.trim() || !input.listId) return null;
+    const item = buildItem(input, Date.now(), createId());
+    dispatch({ type: 'ADD_ITEM', payload: item });
+    return item;
+  }, []);
 
-  const updateItem = (item: Item) => {
-    dispatch({ type: 'UPDATE_ITEM', payload: item });
-    saveData();
-  };
+  const updateItem = useCallback(
+    (id: string, input: ItemInput) => {
+      if (!input.name.trim() || !input.listId) return;
+      const current = state.items.find((item) => item.id === id);
+      if (!current) return;
+      dispatch({ type: 'UPDATE_ITEM', payload: applyItemInput(current, input, Date.now()) });
+    },
+    [state.items],
+  );
 
-  const deleteItem = (id: string) => {
+  const deleteItem = useCallback((id: string) => {
     dispatch({ type: 'DELETE_ITEM', payload: id });
-    saveData();
-  };
+  }, []);
 
-  const markAsPurchased = (id: string) => {
-    dispatch({ type: 'MARK_AS_PURCHASED', payload: id });
-    saveData();
-  };
+  const markAsPurchased = useCallback((id: string) => {
+    // Un ítem comprado se elimina definitivamente del almacenamiento.
+    dispatch({ type: 'DELETE_ITEM', payload: id });
+  }, []);
 
-  const setActiveList = (id: string | null) => {
-    dispatch({ type: 'SET_ACTIVE_LIST', payload: id });
-  };
-
-  const value: ShoppingContextType = {
-    ...state,
-    addList,
-    updateList,
-    deleteList,
-    addItem,
-    updateItem,
-    deleteItem,
-    markAsPurchased,
-    setActiveList,
-    saveData,
-    loadData,
-  };
+  const value = useMemo<ShoppingContextValue>(
+    () => ({
+      ...state,
+      addList,
+      renameList,
+      deleteList,
+      addItem,
+      updateItem,
+      deleteItem,
+      markAsPurchased,
+    }),
+    [state, addList, renameList, deleteList, addItem, updateItem, deleteItem, markAsPurchased],
+  );
 
   return <ShoppingContext.Provider value={value}>{children}</ShoppingContext.Provider>;
 }
 
-export function useShopping(): ShoppingContextType {
+export function useShopping(): ShoppingContextValue {
   const context = useContext(ShoppingContext);
-  if (context === undefined) {
-    throw new Error('useShopping must be used within a ShoppingProvider');
+  if (!context) {
+    throw new Error('useShopping debe usarse dentro de ShoppingProvider');
   }
   return context;
 }
-
-export default ShoppingContext;

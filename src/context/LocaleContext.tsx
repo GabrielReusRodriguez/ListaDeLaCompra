@@ -1,59 +1,51 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { getTranslation, Translations } from '../i18n';
-import storage from '../services/storage';
+import { createContext, useCallback, useEffect, useMemo, type ReactNode } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  DEFAULT_LOCALE,
+  getDictionary,
+  localeFromPath,
+  replaceLocaleInPath,
+  type Dictionary,
+} from '../i18n';
+import { saveLocale } from '../services/storage';
+import type { Locale } from '../types';
 
-interface LocaleContextType {
-  locale: string;
-  translations: Translations;
-  setLocale: (lang: string) => void;
-  t: (key: keyof Translations) => string;
+export interface LocaleContextValue {
+  locale: Locale;
+  t: Dictionary;
+  setLocale: (locale: Locale) => void;
 }
 
-const LocaleContext = createContext<LocaleContextType | undefined>(undefined);
+export const LocaleContext = createContext<LocaleContextValue | null>(null);
 
 interface LocaleProviderProps {
   children: ReactNode;
 }
 
 export function LocaleProvider({ children }: LocaleProviderProps) {
-  const [locale, setLocaleState] = useState<string>(() => {
-    const savedLang = storage.getLanguage();
-    const browserLang = navigator.language.split('-')[0];
-    return savedLang || (browserLang === 'ca' ? 'ca' : 'es');
-  });
-
-  const [translations, setTranslations] = useState<Translations>(getTranslation(locale));
+  const location = useLocation();
+  const navigate = useNavigate();
+  const locale = localeFromPath(location.pathname) ?? DEFAULT_LOCALE;
 
   useEffect(() => {
-    storage.setLanguage(locale);
     document.documentElement.lang = locale;
-    setTranslations(getTranslation(locale));
   }, [locale]);
 
-  const setLocale = (lang: string) => {
-    setLocaleState(lang);
-  };
+  const setLocale = useCallback(
+    (next: Locale) => {
+      saveLocale(next);
+      if (next === locale) return;
+      const search = location.search;
+      const hash = location.hash;
+      navigate(`${replaceLocaleInPath(location.pathname, next)}${search}${hash}`);
+    },
+    [locale, location.pathname, location.search, location.hash, navigate],
+  );
 
-  const t = (key: keyof Translations): string => {
-    return translations[key];
-  };
-
-  const value: LocaleContextType = {
-    locale,
-    translations,
-    setLocale,
-    t,
-  };
+  const value = useMemo<LocaleContextValue>(
+    () => ({ locale, t: getDictionary(locale), setLocale }),
+    [locale, setLocale],
+  );
 
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;
 }
-
-export function useLocale(): LocaleContextType {
-  const context = useContext(LocaleContext);
-  if (context === undefined) {
-    throw new Error('useLocale must be used within a LocaleProvider');
-  }
-  return context;
-}
-
-export default LocaleContext;

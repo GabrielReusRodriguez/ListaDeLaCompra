@@ -1,18 +1,22 @@
-import { defineConfig } from 'vite';
+/// <reference types="vitest" />
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
-import path from 'path';
 
 export default defineConfig({
+  base: './',
   plugins: [react()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
+  server: {
+    port: 5173,
+    strictPort: true,
+    // Web Crypto (PBKDF2) solo funciona en contextos seguros: HTTPS o localhost.
+    // Al reenviar el puerto desde el devcontainer usamos siempre localhost.
+    host: '0.0.0.0',
   },
   test: {
     globals: true,
     environment: 'jsdom',
-    setupFiles: './src/test/setup.ts',
-    css: true,
+    setupFiles: ['./vitest.setup.ts'],
+    css: false,
+    restoreMocks: true,
   },
 });
