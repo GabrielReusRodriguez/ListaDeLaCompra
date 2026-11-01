@@ -16,7 +16,7 @@ import {
 export function ListDetailPage() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
-  const { lists, items, addItem, updateItem, deleteItem, markAsPurchased } = useShopping();
+  const { lists, items, loading, addItem, updateItem, deleteItem, markAsPurchased } = useShopping();
   const path = useLocalePath();
 
   const [filters, setFilters] = useState<FiltersState>(createEmptyFilters);
@@ -34,7 +34,7 @@ export function ListDetailPage() {
 
   const groups = useMemo(() => groupByPriority(visible), [visible]);
 
-  if (!list) {
+  if (!list && !loading) {
     return (
       <div className="layout">
         <Header />
@@ -61,59 +61,67 @@ export function ListDetailPage() {
     <div className="layout">
       <Header />
       <main className="main" id="main-content">
-        <div className="page-header">
-          <div>
-            <p className="breadcrumb">
-              <Link to={path('/listas')}>{t.nav.lists}</Link>
-            </p>
-            <h1>{list.name}</h1>
-          </div>
-          <button type="button" className="btn btn--primary" onClick={() => setEditing('new')}>
-            {t.item.newItem}
-          </button>
-        </div>
-
-        <Filters
-          filters={filters}
-          onChange={setFilters}
-          lists={lists}
-          stores={stores}
-          showList={false}
-          resultCount={visible.length}
-        />
-
-        {listItems.length === 0 ? (
-          <p className="empty-state">{t.detail.empty}</p>
-        ) : visible.length === 0 ? (
-          <p className="empty-state">{t.detail.emptyFiltered}</p>
+        {loading || !list ? (
+          <p className="empty-state" role="status">
+            {t.common.loading}
+          </p>
         ) : (
-          groups.map((group) => (
-            <section
-              key={group.priority}
-              className="group"
-              aria-labelledby={`group-${group.priority}`}
-            >
-              <h2 id={`group-${group.priority}`} className="group__title">
-                {t.priority[group.priority]}
-                <span className="group__count">{group.items.length}</span>
-              </h2>
-              <ul className="item-list">
-                {group.items.map((item) => (
-                  <ItemRow
-                    key={item.id}
-                    item={item}
-                    onEdit={() => setEditing(item)}
-                    onDelete={() => setDeleting(item)}
-                    onMarkPurchased={() => markAsPurchased(item.id)}
-                  />
-                ))}
-              </ul>
-            </section>
-          ))
+          <>
+            <div className="page-header">
+              <div>
+                <p className="breadcrumb">
+                  <Link to={path('/listas')}>{t.nav.lists}</Link>
+                </p>
+                <h1>{list.name}</h1>
+              </div>
+              <button type="button" className="btn btn--primary" onClick={() => setEditing('new')}>
+                {t.item.newItem}
+              </button>
+            </div>
+
+            <Filters
+              filters={filters}
+              onChange={setFilters}
+              lists={lists}
+              stores={stores}
+              showList={false}
+              resultCount={visible.length}
+            />
+
+            {listItems.length === 0 ? (
+              <p className="empty-state">{t.detail.empty}</p>
+            ) : visible.length === 0 ? (
+              <p className="empty-state">{t.detail.emptyFiltered}</p>
+            ) : (
+              groups.map((group) => (
+                <section
+                  key={group.priority}
+                  className="group"
+                  aria-labelledby={`group-${group.priority}`}
+                >
+                  <h2 id={`group-${group.priority}`} className="group__title">
+                    {t.priority[group.priority]}
+                    <span className="group__count">{group.items.length}</span>
+                  </h2>
+                  <ul className="item-list">
+                    {group.items.map((item) => (
+                      <ItemRow
+                        key={item.id}
+                        item={item}
+                        onEdit={() => setEditing(item)}
+                        onDelete={() => setDeleting(item)}
+                        onMarkPurchased={() => markAsPurchased(item.id)}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              ))
+            )}
+          </>
         )}
       </main>
 
-      {editing && (
+      {editing && list && (
         <Modal
           title={editing === 'new' ? t.item.newItem : t.item.editItem}
           onClose={() => setEditing(null)}

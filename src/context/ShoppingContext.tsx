@@ -5,10 +5,11 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useState,
   type ReactNode,
 } from 'react';
 import type { Item, ItemInput, ShoppingList } from '../types';
-import * as storage from '../services/storage';
+import { loadData, persistData } from '../services/secureStorage';
 import { createId } from '../services/crypto';
 import {
   applyItemInput,
@@ -21,6 +22,8 @@ import {
 import { useAuth } from './AuthContext';
 
 export interface ShoppingContextValue extends ShoppingState {
+  /** `true` mientras se descifran los datos del usuario activo. */
+  loading: boolean;
   addList: (name: string) => ShoppingList | null;
   renameList: (id: string, name: string) => void;
   deleteList: (id: string) => void;
@@ -37,22 +40,34 @@ interface ShoppingProviderProps {
 }
 
 export function ShoppingProvider({ children }: ShoppingProviderProps) {
-  const { username } = useAuth();
+  const { username, dataKey } = useAuth();
   const [state, dispatch] = useReducer(shoppingReducer, initialShoppingState);
+  // Los datos se descifran de forma asíncrona: mientras tanto no se muestra "vacío".
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!username) {
+    if (!username || !dataKey) {
+      setLoading(false);
       dispatch({ type: 'RESET' });
       return;
     }
-    dispatch({ type: 'LOAD', payload: storage.getData(username) });
-  }, [username]);
+    let cancelled = false;
+    setLoading(true);
+    void loadData(dataKey, username).then(({ data }) => {
+      if (cancelled) return;
+      dispatch({ type: 'LOAD', payload: data });
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [username, dataKey]);
 
-  // Persistencia: cada cambio de datos se guarda en la clave del usuario activo.
+  // Persistencia: cada cambio de datos se cifra y se guarda en la clave del usuario activo.
   useEffect(() => {
-    if (!username || !state.loaded) return;
-    storage.saveData(username, { lists: state.lists, items: state.items });
-  }, [username, state.loaded, state.lists, state.items]);
+    if (!username || !dataKey || !state.loaded) return;
+    void persistData(dataKey, username, { lists: state.lists, items: state.items });
+  }, [username, dataKey, state.loaded, state.lists, state.items]);
 
   const addList = useCallback((name: string): ShoppingList | null => {
     const trimmed = name.trim();
@@ -101,6 +116,7 @@ export function ShoppingProvider({ children }: ShoppingProviderProps) {
   const value = useMemo<ShoppingContextValue>(
     () => ({
       ...state,
+      loading,
       addList,
       renameList,
       deleteList,
@@ -109,7 +125,17 @@ export function ShoppingProvider({ children }: ShoppingProviderProps) {
       deleteItem,
       markAsPurchased,
     }),
-    [state, addList, renameList, deleteList, addItem, updateItem, deleteItem, markAsPurchased],
+    [
+      state,
+      loading,
+      addList,
+      renameList,
+      deleteList,
+      addItem,
+      updateItem,
+      deleteItem,
+      markAsPurchased,
+    ],
   );
 
   return <ShoppingContext.Provider value={value}>{children}</ShoppingContext.Provider>;

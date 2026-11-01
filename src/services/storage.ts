@@ -3,11 +3,16 @@ import type { Locale, Theme, User, UserData } from '../types';
 /**
  * Único punto de acceso a `localStorage` y `sessionStorage`.
  * Ningún componente debe tocar el almacenamiento directamente.
+ *
+ * Los datos de cada usuario (`ldlc:data:<username>`) se guardan cifrados; este
+ * módulo solo los lee y escribe como contenido opaco. El cifrado vive en
+ * `secureStorage.ts`.
  */
 
 export const STORAGE_KEYS = {
   users: 'ldlc:users',
   dataPrefix: 'ldlc:data:',
+  keyPrefix: 'ldlc:key:',
   lang: 'ldlc:lang',
   theme: 'ldlc:theme',
   session: 'ldlc:session',
@@ -15,6 +20,10 @@ export const STORAGE_KEYS = {
 
 export function dataKey(username: string): string {
   return `${STORAGE_KEYS.dataPrefix}${username}`;
+}
+
+export function keyStorageKey(username: string): string {
+  return `${STORAGE_KEYS.keyPrefix}${username}`;
 }
 
 function readJson<T>(storage: Storage, key: string, fallback: T): T {
@@ -65,16 +74,49 @@ export function saveUser(user: User): void {
 
 /* ----------------------------- Datos de usuario ----------------------------- */
 
-export function getData(username: string): UserData {
-  const data = readJson<Partial<UserData>>(localStorage, dataKey(username), {});
+/**
+ * Contenido crudo de `ldlc:data:<username>`: un `EncryptedPayload` o, en datos
+ * creados antes del cifrado, el `UserData` en claro que hay que migrar.
+ */
+export function getRawData(username: string): unknown {
+  return readJson<unknown>(localStorage, dataKey(username), null);
+}
+
+export function saveRawData(username: string, payload: unknown): void {
+  writeJson(localStorage, dataKey(username), payload);
+}
+
+/* ------------------------- Clave de cifrado (sesión) ------------------------- */
+
+/** La clave solo vive en `sessionStorage`: se borra al cerrar la pestaña. */
+export function getSessionKey(username: string): string | null {
+  return readString(sessionStorage, keyStorageKey(username));
+}
+
+export function setSessionKey(username: string, jwk: string): void {
+  writeString(sessionStorage, keyStorageKey(username), jwk);
+}
+
+export function clearSessionKey(username: string): void {
+  remove(sessionStorage, keyStorageKey(username));
+}
+
+export function clearAllSessionKeys(): void {
+  for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {
+    const key = sessionStorage.key(i);
+    if (key?.startsWith(STORAGE_KEYS.keyPrefix)) {
+      sessionStorage.removeItem(key);
+    }
+  }
+}
+
+/** Normaliza cualquier valor leído a la forma esperada de `UserData`. */
+export function normalizeData(value: unknown): UserData {
+  const data = (typeof value === 'object' && value !== null ? value : {}) as Partial<UserData>;
   return {
     lists: Array.isArray(data.lists) ? data.lists : [],
     items: Array.isArray(data.items) ? data.items : [],
   };
-}
-
-export function saveData(username: string, data: UserData): void {
-  writeJson(localStorage, dataKey(username), data);
 }
 
 /* -------------------------------- Idioma -------------------------------- */

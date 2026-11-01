@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { screen, within } from '@testing-library/react';
-import { makeItem, renderApp, seedData, seedUser } from '../test/utils';
-import { STORAGE_KEYS } from '../services/storage';
-
-function seedSession(username = 'ana'): void {
-  seedUser(username);
-  sessionStorage.setItem(STORAGE_KEYS.session, username);
-}
+import { screen, waitFor, within } from '@testing-library/react';
+import { makeItem, renderApp, seedSession } from '../test/utils';
 
 const lists = [
   { id: 'l1', name: 'Semana', createdAt: 1 },
@@ -46,17 +40,26 @@ function itemNames(): string[] {
     .map((row) => within(row).getByText(/^(Pan|Manzanas|Leche)$/).textContent ?? '');
 }
 
+/** Espera a que terminen de descifrarse los datos de la sesión. */
+async function waitForItems(names: string[]): Promise<void> {
+  await waitFor(() => expect(itemNames()).toEqual(names));
+}
+
+/** Orden de la vista por lugar: grupos alfabéticos por lugar, dentro por prioridad. */
+const BY_STORE_ORDER = ['Manzanas', 'Pan', 'Leche'];
+
+function groupHeadings(): (string | null)[] {
+  return screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+}
+
 describe('vista por prioridad', () => {
   it('muestra pendientes de todas las listas ordenados alta → media → baja', async () => {
-    seedSession();
-    seedData('ana', { lists, items });
+    await seedSession('ana', { lists, items });
     renderApp('/es/por-prioridad');
 
     await screen.findByRole('heading', { name: 'Pendientes por prioridad' });
-    expect(itemNames()).toEqual(['Pan', 'Leche', 'Manzanas']);
-
-    const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
-    expect(headings).toEqual(['Alta1', 'Media1', 'Baja1']);
+    await waitForItems(['Pan', 'Leche', 'Manzanas']);
+    expect(groupHeadings()).toEqual(['Alta1', 'Media1', 'Baja1']);
 
     // Muestra la lista y el lugar de cada ítem.
     const manzanas = screen.getByText('Manzanas').closest('li') as HTMLElement;
@@ -65,10 +68,10 @@ describe('vista por prioridad', () => {
   });
 
   it('filtra por lista y por lugar', async () => {
-    seedSession();
-    seedData('ana', { lists, items });
+    await seedSession('ana', { lists, items });
     const { user } = renderApp('/es/por-prioridad');
     await screen.findByRole('heading', { name: 'Pendientes por prioridad' });
+    await waitForItems(['Pan', 'Leche', 'Manzanas']);
 
     await user.selectOptions(screen.getByLabelText('Lista'), 'l2');
     expect(itemNames()).toEqual(['Manzanas']);
@@ -84,8 +87,7 @@ describe('vista por prioridad', () => {
 
 describe('vista por lugar', () => {
   it('agrupa por lugar y ordena cada grupo por prioridad', async () => {
-    seedSession();
-    seedData('ana', {
+    await seedSession('ana', {
       lists,
       items: [
         ...items,
@@ -102,8 +104,9 @@ describe('vista por lugar', () => {
     renderApp('/es/por-lugar');
 
     await screen.findByRole('heading', { name: 'Pendientes por lugar de compra' });
-    const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
-    expect(headings).toEqual(['Frutería1', 'Panadería2', 'Supermercado1']);
+    await waitFor(() =>
+      expect(groupHeadings()).toEqual(['Frutería1', 'Panadería2', 'Supermercado1']),
+    );
 
     const panaderia = screen
       .getByRole('heading', { name: 'Panadería 2' })
@@ -116,8 +119,7 @@ describe('vista por lugar', () => {
   });
 
   it('la rejilla de filtros no reserva columnas para los filtros ocultos', async () => {
-    seedSession();
-    seedData('ana', { lists, items });
+    await seedSession('ana', { lists, items });
     renderApp('/es/por-lugar');
     await screen.findByRole('heading', { name: 'Pendientes por lugar de compra' });
 
@@ -126,10 +128,10 @@ describe('vista por lugar', () => {
   });
 
   it('busca por nombre sin distinguir mayúsculas', async () => {
-    seedSession();
-    seedData('ana', { lists, items });
+    await seedSession('ana', { lists, items });
     const { user } = renderApp('/es/por-lugar');
     await screen.findByRole('heading', { name: 'Pendientes por lugar de compra' });
+    await waitForItems(BY_STORE_ORDER);
 
     await user.type(screen.getByLabelText('Buscar por nombre'), 'MANZ');
     expect(itemNames()).toEqual(['Manzanas']);
@@ -137,10 +139,10 @@ describe('vista por lugar', () => {
   });
 
   it('muestra un mensaje cuando ningún ítem coincide', async () => {
-    seedSession();
-    seedData('ana', { lists, items });
+    await seedSession('ana', { lists, items });
     const { user } = renderApp('/es/por-lugar');
     await screen.findByRole('heading', { name: 'Pendientes por lugar de compra' });
+    await waitForItems(BY_STORE_ORDER);
 
     await user.type(screen.getByLabelText('Buscar por nombre'), 'zzz');
     expect(screen.getByText('Ningún ítem coincide con los filtros.')).toBeInTheDocument();
@@ -149,8 +151,7 @@ describe('vista por lugar', () => {
 
 describe('idioma', () => {
   it('la URL /ca muestra la interfaz en catalán', async () => {
-    seedSession();
-    seedData('ana', { lists, items });
+    await seedSession('ana', { lists, items });
     renderApp('/ca/por-prioridad');
 
     expect(
@@ -161,8 +162,7 @@ describe('idioma', () => {
   });
 
   it('el selector de idioma cambia la URL conservando la ruta y guarda la preferencia', async () => {
-    seedSession();
-    seedData('ana', { lists, items });
+    await seedSession('ana', { lists, items });
     const { user } = renderApp('/es/por-lugar');
     await screen.findByRole('heading', { name: 'Pendientes por lugar de compra' });
 

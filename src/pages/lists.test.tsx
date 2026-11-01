@@ -1,16 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { screen, within } from '@testing-library/react';
-import { renderApp, seedData, seedUser } from '../test/utils';
-import { STORAGE_KEYS } from '../services/storage';
-
-function seedSession(username = 'ana'): void {
-  seedUser(username);
-  sessionStorage.setItem(STORAGE_KEYS.session, username);
-}
+import { makeItem, readStoredData, renderApp, seedSession } from '../test/utils';
 
 describe('gestión de listas', () => {
   it('crea una lista y entra en ella', async () => {
-    seedSession();
+    await seedSession();
     const { user } = renderApp('/es/listas');
 
     expect(
@@ -25,8 +19,7 @@ describe('gestión de listas', () => {
   });
 
   it('renombra una lista', async () => {
-    seedSession();
-    seedData('ana', { lists: [{ id: 'l1', name: 'Semana', createdAt: 1 }] });
+    await seedSession('ana', { lists: [{ id: 'l1', name: 'Semana', createdAt: 1 }] });
     const { user } = renderApp('/es/listas');
 
     await user.click(await screen.findByRole('button', { name: 'Editar' }));
@@ -39,21 +32,10 @@ describe('gestión de listas', () => {
   });
 
   it('elimina una lista junto con sus ítems', async () => {
-    seedSession();
-    seedData('ana', {
+    await seedSession('ana', {
       lists: [{ id: 'l1', name: 'Semana', createdAt: 1 }],
       items: [
-        {
-          id: 'i1',
-          listId: 'l1',
-          name: 'Pan',
-          quantity: 1,
-          unit: '',
-          store: 'panaderia',
-          priority: 'alta',
-          createdAt: 1,
-          updatedAt: 1,
-        },
+        makeItem({ id: 'i1', listId: 'l1', name: 'Pan', store: 'panaderia', priority: 'alta' }),
       ],
     });
     const { user } = renderApp('/es/listas');
@@ -67,13 +49,13 @@ describe('gestión de listas', () => {
     expect(
       await screen.findByText('Todavía no tienes listas. Crea la primera.'),
     ).toBeInTheDocument();
-    const stored = JSON.parse(localStorage.getItem('ldlc:data:ana') ?? '{}');
+    const stored = await readStoredData();
     expect(stored.lists).toEqual([]);
     expect(stored.items).toEqual([]);
   });
 
   it('muestra «lista no encontrada» para un id inexistente', async () => {
-    seedSession();
+    await seedSession();
     renderApp('/es/lista/no-existe');
     expect(await screen.findByText('La lista no existe o se ha eliminado.')).toBeInTheDocument();
   });
