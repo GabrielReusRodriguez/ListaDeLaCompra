@@ -1,33 +1,14 @@
-import { Store } from '../types';
-import { useTranslation } from '../hooks';
+import { useTranslation } from '../hooks/useTranslation';
+import { isCatalogStore } from '../types';
 
 interface StoreBadgeProps {
-  store: Store | string;
+  store: string;
 }
 
 export function StoreBadge({ store }: StoreBadgeProps) {
   const { t } = useTranslation();
-
-  const getStoreText = () => {
-    switch (store) {
-      case 'supermercado':
-        return t('storeSupermarket');
-      case 'panaderia':
-        return t('storeBakery');
-      case 'fruteria':
-        return t('storeGreengrocer');
-      case 'carniceria':
-        return t('storeButcher');
-      case 'centro comercial':
-        return t('storeMall');
-      case 'otros':
-        return t('storeOthers');
-      default:
-        return store;
-    }
-  };
-
-  return <span className="store-badge">{getStoreText()}</span>;
+  const key = store || 'otros';
+  // Los lugares predefinidos se traducen; los personalizados se muestran tal cual.
+  const label = isCatalogStore(key) ? t.store[key] : key;
+  return <span className="badge badge--store">{label}</span>;
 }
-
-export default StoreBadge;

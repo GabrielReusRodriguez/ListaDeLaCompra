@@ -1,100 +1,117 @@
-import React, { useState } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useId, useState, type FormEvent } from 'react';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Header } from '../components/Header';
 import { useAuth } from '../context/AuthContext';
-import { useLocale } from '../context/LocaleContext';
+import { useLocalePath } from '../hooks/useLocalePath';
+import { useTranslation } from '../hooks/useTranslation';
+import { validatePassword, validateUsername } from '../services/auth';
 
 export function RegisterPage() {
-  const { register } = useAuth();
-  const { locale } = useLocale();
+  const { t } = useTranslation();
+  const { username, register } = useAuth();
+  const path = useLocalePath();
   const navigate = useNavigate();
-  const { lang } = useParams<{ lang: string }>();
-  const currentLang = lang || locale;
+  const id = useId();
 
-  const [username, setUsername] = useState('');
+  const [user, setUser] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+  if (username) {
+    return <Navigate to={path('/listas')} replace />;
+  }
 
-    if (!username || !password || !confirmPassword) {
-      setError('All fields are required');
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!validateUsername(user.trim()) || !validatePassword(password)) {
+      setError(t.auth.invalidInput);
       return;
     }
-
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
+    if (password !== confirmation) {
+      setError(t.auth.passwordMismatch);
       return;
     }
-
-    const success = await register(username, password);
-    if (success) {
-      navigate(`/${currentLang}/listas`);
+    setSubmitting(true);
+    setError(null);
+    const result = await register(user, password);
+    setSubmitting(false);
+    if (result.ok) {
+      navigate(path('/listas'), { replace: true });
+    } else if (result.error === 'user-exists') {
+      setError(t.auth.userExists);
+    } else if (result.error === 'crypto-unavailable') {
+      setError(t.auth.cryptoUnavailable);
     } else {
-      setError('Username already exists');
+      setError(t.auth.invalidInput);
     }
   };
 
   return (
-    <div className="auth-page">
-      <div className="auth-card">
-        <h1>Lista de la Compra</h1>
-        <h2>Registrarse</h2>
-        
-        {error && <div className="error-message">{error}</div>}
-        
-        <form onSubmit={handleSubmit} className="auth-form">
-          <div className="form-group">
-            <label htmlFor="username">Nombre de usuario</label>
-            <input
-              type="text"
-              id="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-            />
-          </div>
-          
-          <div className="form-group">
-            <label htmlFor="password">Contraseña</label>
-            <input
-              type="password"
-              id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-          
-          <div className="form-group">
-            <label htmlFor="confirmPassword">Confirmar contraseña</label>
-            <input
-              type="password"
-              id="confirmPassword"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-            />
-          </div>
-          
-          <button type="submit" className="btn btn-primary btn-full">
-            Registrarse
-          </button>
-        </form>
-        
-        <div className="auth-footer">
-          <p>¿Ya tienes cuenta? <Link to={`/${currentLang}/login`}>Inicia sesión</Link></p>
+    <div className="layout">
+      <Header />
+      <main className="main auth" id="main-content">
+        <div className="card auth__card">
+          <h1>{t.auth.registerTitle}</h1>
+          <form className="form" onSubmit={handleSubmit} noValidate>
+            {error && (
+              <p className="form__error" role="alert">
+                {error}
+              </p>
+            )}
+            <div className="field">
+              <label htmlFor={`${id}-user`}>{t.auth.username}</label>
+              <input
+                id={`${id}-user`}
+                type="text"
+                value={user}
+                onChange={(event) => setUser(event.target.value)}
+                autoComplete="username"
+                autoCapitalize="none"
+                aria-describedby={`${id}-user-hint`}
+                required
+              />
+              <p id={`${id}-user-hint`} className="field__hint">
+                {t.auth.usernameHint}
+              </p>
+            </div>
+            <div className="field">
+              <label htmlFor={`${id}-password`}>{t.auth.password}</label>
+              <input
+                id={`${id}-password`}
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="new-password"
+                aria-describedby={`${id}-password-hint`}
+                required
+              />
+              <p id={`${id}-password-hint`} className="field__hint">
+                {t.auth.passwordHint}
+              </p>
+            </div>
+            <div className="field">
+              <label htmlFor={`${id}-confirm`}>{t.auth.passwordConfirm}</label>
+              <input
+                id={`${id}-confirm`}
+                type="password"
+                value={confirmation}
+                onChange={(event) => setConfirmation(event.target.value)}
+                autoComplete="new-password"
+                required
+              />
+            </div>
+            <button type="submit" className="btn btn--primary btn--block" disabled={submitting}>
+              {t.auth.registerAction}
+            </button>
+          </form>
+          <p className="auth__switch">
+            <Link to={path('/login')}>{t.auth.toLogin}</Link>
+          </p>
+          <p className="auth__note">{t.auth.localOnly}</p>
         </div>
-        
-        <div className="language-selector">
-          <Link to="/es/registro" className={currentLang === 'es' ? 'active' : ''}>Español</Link>
-          <Link to="/ca/registro" className={currentLang === 'ca' ? 'active' : ''}>Català</Link>
-        </div>
-      </div>
+      </main>
     </div>
   );
 }
-
-export default RegisterPage;
