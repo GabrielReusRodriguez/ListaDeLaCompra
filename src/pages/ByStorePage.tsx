@@ -15,7 +15,7 @@ import {
 /** Pendientes agrupados por lugar de compra y, dentro de cada grupo, por prioridad. */
 export function ByStorePage() {
   const { t } = useTranslation();
-  const { lists, items, updateItem, deleteItem, markAsPurchased } = useShopping();
+  const { lists, items, loading, updateItem, deleteItem, markAsPurchased } = useShopping();
 
   const [filters, setFilters] = useState<FiltersState>(createEmptyFilters);
   const [editing, setEditing] = useState<Item | null>(null);
@@ -48,7 +48,11 @@ export function ByStorePage() {
           resultCount={visible.length}
         />
 
-        {items.length === 0 ? (
+        {loading ? (
+          <p className="empty-state" role="status">
+            {t.common.loading}
+          </p>
+        ) : items.length === 0 ? (
           <p className="empty-state">{t.byStore.empty}</p>
         ) : visible.length === 0 ? (
           <p className="empty-state">{t.byStore.emptyFiltered}</p>

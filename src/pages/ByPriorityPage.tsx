@@ -14,7 +14,7 @@ import {
 /** Pendientes de todas las listas ordenados alta → media → baja. */
 export function ByPriorityPage() {
   const { t } = useTranslation();
-  const { lists, items, updateItem, deleteItem, markAsPurchased } = useShopping();
+  const { lists, items, loading, updateItem, deleteItem, markAsPurchased } = useShopping();
 
   const [filters, setFilters] = useState<FiltersState>(createEmptyFilters);
   const [editing, setEditing] = useState<Item | null>(null);
@@ -47,7 +47,11 @@ export function ByPriorityPage() {
           resultCount={visible.length}
         />
 
-        {items.length === 0 ? (
+        {loading ? (
+          <p className="empty-state" role="status">
+            {t.common.loading}
+          </p>
+        ) : items.length === 0 ? (
           <p className="empty-state">{t.byPriority.empty}</p>
         ) : visible.length === 0 ? (
           <p className="empty-state">{t.byPriority.emptyFiltered}</p>

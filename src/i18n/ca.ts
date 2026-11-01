@@ -54,7 +54,7 @@ export const ca: Dictionary = {
     cryptoUnavailable:
       'El navegador no permet xifrar la contrasenya en aquest context. Obre l’aplicació en HTTPS o en localhost.',
     localOnly:
-      'Les teves dades es guarden només en aquest navegador. La contrasenya no s’emmagatzema mai en clar.',
+      'Les teves dades es guarden xifrades només en aquest navegador. La contrasenya no s’emmagatzema mai en clar.',
     loggedInAs: 'Sessió iniciada com a {username}',
   },
 

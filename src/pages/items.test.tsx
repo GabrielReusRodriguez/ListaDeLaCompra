@@ -1,16 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { screen, within } from '@testing-library/react';
-import { makeItem, renderApp, seedData, seedUser } from '../test/utils';
+import { makeItem, readStoredData, renderApp, seedSession, seedUser } from '../test/utils';
 import { STORAGE_KEYS } from '../services/storage';
-
-function seedSession(username = 'ana'): void {
-  seedUser(username);
-  sessionStorage.setItem(STORAGE_KEYS.session, username);
-}
-
-function storedData(username = 'ana') {
-  return JSON.parse(localStorage.getItem(`ldlc:data:${username}`) ?? '{"lists":[],"items":[]}');
-}
 
 const baseLists = [
   { id: 'l1', name: 'Semana', createdAt: 1 },
@@ -19,8 +10,7 @@ const baseLists = [
 
 describe('gestión de ítems', () => {
   it('crea un ítem con todos los campos', async () => {
-    seedSession();
-    seedData('ana', { lists: baseLists });
+    await seedSession('ana', { lists: baseLists });
     const { user } = renderApp('/es/lista/l1');
 
     await user.click(await screen.findByRole('button', { name: 'Añadir ítem' }));
@@ -39,7 +29,7 @@ describe('gestión de ítems', () => {
     expect(screen.getAllByText('Frutería').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Alta').length).toBeGreaterThan(0);
 
-    const [item] = storedData().items;
+    const [item] = (await readStoredData()).items;
     expect(item).toMatchObject({
       listId: 'l1',
       name: 'Manzanas',
@@ -51,8 +41,7 @@ describe('gestión de ítems', () => {
   });
 
   it('valida que el nombre sea obligatorio', async () => {
-    seedSession();
-    seedData('ana', { lists: baseLists });
+    await seedSession('ana', { lists: baseLists });
     const { user } = renderApp('/es/lista/l1');
 
     await user.click(await screen.findByRole('button', { name: 'Añadir ítem' }));
@@ -61,8 +50,7 @@ describe('gestión de ítems', () => {
   });
 
   it('permite un lugar de compra personalizado', async () => {
-    seedSession();
-    seedData('ana', { lists: baseLists });
+    await seedSession('ana', { lists: baseLists });
     const { user } = renderApp('/es/lista/l1');
 
     await user.click(await screen.findByRole('button', { name: 'Añadir ítem' }));
@@ -73,12 +61,11 @@ describe('gestión de ítems', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Guardar' }));
 
     expect(await screen.findByText('Miel')).toBeInTheDocument();
-    expect(storedData().items[0].store).toBe('Mercadillo');
+    expect((await readStoredData()).items[0].store).toBe('Mercadillo');
   });
 
   it('edita un ítem pendiente', async () => {
-    seedSession();
-    seedData('ana', {
+    await seedSession('ana', {
       lists: baseLists,
       items: [makeItem({ id: 'i1', listId: 'l1', name: 'Leche', priority: 'baja' })],
     });
@@ -94,12 +81,14 @@ describe('gestión de ítems', () => {
 
     expect(await screen.findByText('Leche entera')).toBeInTheDocument();
     expect(screen.queryByText('Leche', { selector: '.item-row__name' })).not.toBeInTheDocument();
-    expect(storedData().items[0]).toMatchObject({ name: 'Leche entera', priority: 'media' });
+    expect((await readStoredData()).items[0]).toMatchObject({
+      name: 'Leche entera',
+      priority: 'media',
+    });
   });
 
   it('elimina un ítem pendiente', async () => {
-    seedSession();
-    seedData('ana', {
+    await seedSession('ana', {
       lists: baseLists,
       items: [makeItem({ id: 'i1', listId: 'l1', name: 'Leche' })],
     });
@@ -109,12 +98,11 @@ describe('gestión de ítems', () => {
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Eliminar' }));
 
     expect(await screen.findByText('No hay ítems pendientes en esta lista.')).toBeInTheDocument();
-    expect(storedData().items).toEqual([]);
+    expect((await readStoredData()).items).toEqual([]);
   });
 
   it('marca como comprado y el ítem desaparece del almacenamiento', async () => {
-    seedSession();
-    seedData('ana', {
+    await seedSession('ana', {
       lists: baseLists,
       items: [
         makeItem({ id: 'i1', listId: 'l1', name: 'Leche' }),
@@ -127,12 +115,11 @@ describe('gestión de ítems', () => {
 
     expect(screen.queryByText('Leche')).not.toBeInTheDocument();
     expect(screen.getByText('Pan')).toBeInTheDocument();
-    expect(storedData().items.map((item: { id: string }) => item.id)).toEqual(['i2']);
+    expect((await readStoredData()).items.map((item) => item.id)).toEqual(['i2']);
   });
 
   it('ordena los pendientes por prioridad y, dentro de cada nivel, por creación', async () => {
-    seedSession();
-    seedData('ana', {
+    await seedSession('ana', {
       lists: baseLists,
       items: [
         makeItem({ id: 'i1', listId: 'l1', name: 'Baja-1', priority: 'baja', createdAt: 1 }),
@@ -151,8 +138,7 @@ describe('gestión de ítems', () => {
   });
 
   it('los datos siguen disponibles tras recargar la página', async () => {
-    seedSession();
-    seedData('ana', {
+    await seedSession('ana', {
       lists: baseLists,
       items: [makeItem({ id: 'i1', listId: 'l1', name: 'Leche' })],
     });
@@ -164,9 +150,32 @@ describe('gestión de ítems', () => {
     expect(await screen.findByText('Leche')).toBeInTheDocument();
   });
 
+  it('en localStorage solo hay datos cifrados, sin nombres de listas ni ítems', async () => {
+    await seedSession('ana', {
+      lists: baseLists,
+      items: [makeItem({ id: 'i1', listId: 'l1', name: 'Leche' })],
+    });
+    const { user } = renderApp('/es/lista/l1');
+    await user.click(await screen.findByRole('button', { name: 'Marcar como comprado: Leche' }));
+    expect(screen.queryByText('Leche')).not.toBeInTheDocument();
+
+    // Espera a que la persistencia cifrada termine.
+    await vi.waitFor(async () => {
+      expect((await readStoredData()).items).toEqual([]);
+    });
+
+    const dump = JSON.stringify({ ...localStorage });
+    expect(dump).not.toContain('Leche');
+    expect(dump).not.toContain('Semana');
+    expect(dump).not.toContain('Sábado');
+    expect(JSON.parse(localStorage.getItem('ldlc:data:ana') ?? '{}')).toMatchObject({
+      v: 1,
+      alg: 'AES-GCM',
+    });
+  });
+
   it('no mezcla los datos de dos usuarios del mismo navegador', async () => {
-    seedSession('ana');
-    seedData('ana', {
+    await seedSession('ana', {
       lists: baseLists,
       items: [makeItem({ id: 'i1', listId: 'l1', name: 'Leche de Ana' })],
     });
@@ -174,7 +183,7 @@ describe('gestión de ítems', () => {
     expect(await first.findByText('Leche de Ana')).toBeInTheDocument();
     first.unmount();
 
-    seedUser('luis');
+    await seedUser('luis');
     sessionStorage.setItem(STORAGE_KEYS.session, 'luis');
     renderApp('/es/listas');
     expect(

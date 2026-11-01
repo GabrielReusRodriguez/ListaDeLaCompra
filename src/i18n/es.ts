@@ -52,7 +52,7 @@ export const es: Dictionary = {
     cryptoUnavailable:
       'El navegador no permite cifrar la contraseña en este contexto. Abre la app en HTTPS o en localhost.',
     localOnly:
-      'Tus datos se guardan solo en este navegador. La contraseña nunca se almacena en claro.',
+      'Tus datos se guardan cifrados solo en este navegador. La contraseña nunca se almacena en claro.',
     loggedInAs: 'Sesión iniciada como {username}',
   },
 

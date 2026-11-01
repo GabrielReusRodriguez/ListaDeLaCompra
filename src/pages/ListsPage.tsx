@@ -15,7 +15,7 @@ type Dialog =
 
 export function ListsPage() {
   const { t } = useTranslation();
-  const { lists, items, addList, renameList, deleteList } = useShopping();
+  const { lists, items, loading, addList, renameList, deleteList } = useShopping();
   const path = useLocalePath();
   const navigate = useNavigate();
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -37,7 +37,11 @@ export function ListsPage() {
           </button>
         </div>
 
-        {sortedLists.length === 0 ? (
+        {loading ? (
+          <p className="empty-state" role="status">
+            {t.common.loading}
+          </p>
+        ) : sortedLists.length === 0 ? (
           <p className="empty-state">{t.lists.empty}</p>
         ) : (
           <div className="grid grid--cards">

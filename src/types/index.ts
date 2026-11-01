@@ -84,6 +84,28 @@ export interface UserData {
   items: Item[];
 }
 
+/** Contenido cifrado de `ldlc:data:<username>` (AES-GCM-256). */
+export interface EncryptedPayload {
+  /** Versión del formato de cifrado. */
+  v: 1;
+  alg: 'AES-GCM';
+  /** IV aleatorio de 12 bytes en base64, distinto en cada escritura. */
+  iv: string;
+  /** Texto cifrado con la etiqueta de autenticación incluida, en base64. */
+  ct: string;
+}
+
+export function isEncryptedPayload(value: unknown): value is EncryptedPayload {
+  if (typeof value !== 'object' || value === null) return false;
+  const payload = value as Partial<EncryptedPayload>;
+  return (
+    payload.v === 1 &&
+    payload.alg === 'AES-GCM' &&
+    typeof payload.iv === 'string' &&
+    typeof payload.ct === 'string'
+  );
+}
+
 export interface Filters {
   search: string;
   listId: string | 'all';
