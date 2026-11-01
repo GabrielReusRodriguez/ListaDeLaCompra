@@ -28,19 +28,32 @@ Aplicación web en React para listas de la compra que funciona 100 % en local: s
 - Los identificadores de código (componentes, funciones, variables) van en inglés.
 - Componentes en PascalCase, un componente por archivo; hooks en camelCase con prefijo `use`.
 
-## Estructura prevista
+## Estructura
 
 ```text
 src/
-├── components/   # componentes reutilizables (ItemRow, ListCard, PriorityBadge...)
-├── pages/        # Login, Register, Lists, ListDetail, ByPriority, ByStore
-├── context/      # AuthContext y ShoppingContext con useReducer
-├── services/     # auth.ts (hash PBKDF2), storage.ts (localStorage)
-├── types/        # User, ShoppingList, Item, Priority
-├── hooks/        # useLocalStorage, useSession...
-├── i18n/         # es.ts, ca.ts, LocaleContext, useTranslation
-└── App.tsx       # rutas y guard de autenticación
+├── components/   # Header, Filters, ItemForm, ItemRow, ListCard, Modal, NameForm,
+│                 # ConfirmDialog, PriorityBadge, StoreBadge, LanguageSwitcher,
+│                 # ThemeSwitcher, RequireAuth
+├── pages/        # Login, Register, Lists, ListDetail, ByPriority, ByStore, RootRedirect
+├── context/      # AuthContext, ShoppingContext (useReducer), LocaleContext y ThemeContext
+├── services/     # storage.ts (único acceso a localStorage/sessionStorage),
+│                 # auth.ts (registro/login) y crypto.ts (PBKDF2, salt, UUID)
+├── lib/          # shopping.ts: reducer, ordenación, filtros y agrupaciones (lógica pura)
+├── hooks/        # useTranslation, useLocalePath y reexport de los contextos
+├── i18n/         # es.ts, ca.ts (mismas claves), detección y formateo
+├── types/        # User, ShoppingList, Item, Priority, Locale, Filters
+├── test/         # utilidades de prueba (renderApp, seeds)
+├── styles/       # index.css, mobile-first con media queries
+└── App.tsx       # rutas con prefijo de idioma y guard de autenticación
 ```
+
+Notas de implementación:
+
+- `LocaleProvider` vive dentro de la rama `/:locale/*`, así el idioma activo siempre coincide con la URL.
+- `ThemeProvider` envuelve todas las rutas: aplica el tema con `data-theme` en `<html>`, lo guarda en `ldlc:theme` (vía `storage.ts`) y, si no hay preferencia, parte de `prefers-color-scheme`. Los colores de ambos temas son variables CSS en `src/styles/index.css`.
+- La persistencia se hace en un `useEffect` del `ShoppingProvider` que serializa el estado cuando cambia; los componentes nunca escriben en el almacenamiento.
+- `crypto.subtle` solo existe en contextos seguros (HTTPS o `localhost`). Si se abre la app por IP en HTTP, el registro y el inicio de sesión muestran un aviso explícito (`auth.cryptoUnavailable`).
 
 ## Reglas innegociables
 
@@ -48,7 +61,8 @@ src/
 - La contraseña nunca se guarda en claro; solo su hash PBKDF2 con salt.
 - Ninguna ruta muestra datos sin sesión activa; el guard redirige a `/login`.
 - Toda lectura y escritura de `localStorage` pasa por `src/services/storage.ts`; no escribas en `localStorage` directamente desde los componentes.
-- La interfaz es responsive (mobile-first con CSS y media queries): usable en PC y en móvil, con objetivos táctiles de al menos 44 px y sin depender de hover.
+- La interfaz es responsive (mobile-first con CSS, media queries y container queries): usable en PC y en móvil, con objetivos táctiles de al menos 44 px y sin depender de hover.
+- Los colores de la interfaz se definen como variables CSS en `src/styles/index.css` y deben funcionar en tema claro y oscuro; no escribas colores literales en los componentes ni en reglas sueltas.
 - NUNCA uses componentes, hooks o APIs marcados como deprecados, ni de React, ni de librerías, ni del navegador (por ejemplo, WebSQL). Antes de usar cualquier API, comprueba en la documentación oficial que no esté deprecada y usa el sustituto recomendado.
 - Toda cadena visible de la interfaz se traduce con `src/i18n` en `es` y `ca`; el idioma se elige desde la app y por el prefijo de la URL (`/es/...`, `/ca/...`).
 - No añadas dependencias nuevas sin justificarlo en el mensaje de commit.
@@ -61,12 +75,14 @@ Se ejecutan desde la raíz del repositorio, siempre dentro del contenedor del de
 ```bash
 npm install                     # instala dependencias (dentro del contenedor)
 npm run dev -- --host 0.0.0.0   # servidor de desarrollo; el puerto 5173 se reenvía al host
-npm run build                   # build de producción en dist/
+npm run build                   # comprobación de tipos + build de producción en dist/
 npm test -- --run               # ejecuta las pruebas una vez
-npm run lint                    # ejecuta ESLint
+npm run lint                    # ejecuta ESLint sin avisos permitidos
+npm run format                  # formatea con Prettier
+npm run format:check            # comprueba el formato
 ```
 
-TODO: verificar cada comando contra `package.json` cuando exista el scaffold del proyecto.
+Los comandos están verificados contra `package.json`. Abre la app en `http://localhost:5173` (no por IP): Web Crypto solo está disponible en contextos seguros.
 
 ## Flujo de trabajo
 
@@ -86,6 +102,7 @@ Un encargo solo está terminado cuando cumple todos estos puntos:
 - [ ] `npm run build` genera el build de producción sin errores.
 - [ ] La funcionalidad se ha comprobado en el navegador del host con `npm run dev -- --host 0.0.0.0` en `http://localhost:5173`.
 - [ ] La interfaz se ha comprobado en un viewport de PC y en uno de móvil (por ejemplo, con el modo dispositivo de Chrome DevTools).
+- [ ] La interfaz se ha comprobado en tema claro y en tema oscuro, y la preferencia se conserva al recargar.
 - [ ] Los textos nuevos de la interfaz existen en `es` y en `ca`, y el cambio de idioma funciona desde la app y desde la URL (`/es/...`, `/ca/...`).
 - [ ] No hay ninguna llamada de red nueva; la persistencia sigue pasando solo por `src/services/storage.ts` y ninguna contraseña se guarda en claro.
 - [ ] Se ha ejecutado únicamente dentro del devcontainer; no se ha instalado nada en el host.

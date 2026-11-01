@@ -11,6 +11,7 @@ Aplicación web en React para gestionar listas de la compra de forma privada: si
 - Visualizar los pendientes ordenados por prioridad y agrupados por lugar de compra.
 - Exigir autenticación local antes de mostrar o modificar cualquier dato.
 - Mostrar la app en castellano y catalán, con el idioma elegible desde la app y desde la URL.
+- Permitir elegir entre tema claro y oscuro y recordar la preferencia del usuario.
 
 ## Fuera de alcance
 
@@ -20,44 +21,44 @@ Aplicación web en React para gestionar listas de la compra de forma privada: si
 
 ## Modelo de datos
 
-Toda la información se guarda en `localStorage` como JSON, aislada por usuario. Las claves son `ldlc:users` para las credenciales y `ldlc:data:<username>` para los datos de cada usuario.
+Toda la información se guarda en `localStorage` como JSON, aislada por usuario. Las claves son `ldlc:users` para las credenciales, `ldlc:data:<username>` para los datos de cada usuario y las preferencias globales `ldlc:lang` (idioma) y `ldlc:theme` (tema). La sesión activa se guarda en `sessionStorage` con la clave `ldlc:session`.
 
 ### Usuario
 
-| Campo | Tipo | Descripción |
-|---|---|---|
-| `username` | string | Nombre de usuario; clave primaria. |
-| `salt` | string | Salt aleatorio de 16 bytes en base64. |
+| Campo          | Tipo   | Descripción                                                  |
+| -------------- | ------ | ------------------------------------------------------------ |
+| `username`     | string | Nombre de usuario; clave primaria.                           |
+| `salt`         | string | Salt aleatorio de 16 bytes en base64.                        |
 | `passwordHash` | string | Hash PBKDF2-SHA-256 de la contraseña con el salt, en base64. |
-| `createdAt` | number | Fecha de registro en milisegundos. |
+| `createdAt`    | number | Fecha de registro en milisegundos.                           |
 
 ### Lista de la compra
 
-| Campo | Tipo | Descripción |
-|---|---|---|
-| `id` | string | UUID generado en el cliente con `crypto.randomUUID()`. |
-| `name` | string | Nombre de la lista. |
-| `createdAt` | number | Fecha de creación en milisegundos. |
+| Campo       | Tipo   | Descripción                                            |
+| ----------- | ------ | ------------------------------------------------------ |
+| `id`        | string | UUID generado en el cliente con `crypto.randomUUID()`. |
+| `name`      | string | Nombre de la lista.                                    |
+| `createdAt` | number | Fecha de creación en milisegundos.                     |
 
 ### Ítem
 
-| Campo | Tipo | Descripción |
-|---|---|---|
-| `id` | string | UUID generado en el cliente. |
-| `listId` | string | Lista a la que pertenece. |
-| `name` | string | Nombre del producto. |
-| `quantity` | number | Cantidad; por defecto 1. |
-| `unit` | string | Unidad opcional: kg, l, paquete, etc. |
-| `store` | string | Lugar de compra (ver catálogo). |
-| `priority` | `'alta' \| 'media' \| 'baja'` | Prioridad del ítem. |
-| `createdAt` | number | Fecha de creación en milisegundos. |
-| `updatedAt` | number | Fecha de la última modificación en milisegundos. |
+| Campo       | Tipo                          | Descripción                                      |
+| ----------- | ----------------------------- | ------------------------------------------------ |
+| `id`        | string                        | UUID generado en el cliente.                     |
+| `listId`    | string                        | Lista a la que pertenece.                        |
+| `name`      | string                        | Nombre del producto.                             |
+| `quantity`  | number                        | Cantidad; por defecto 1.                         |
+| `unit`      | string                        | Unidad opcional: kg, l, paquete, etc.            |
+| `store`     | string                        | Lugar de compra (ver catálogo).                  |
+| `priority`  | `'alta' \| 'media' \| 'baja'` | Prioridad del ítem.                              |
+| `createdAt` | number                        | Fecha de creación en milisegundos.               |
+| `updatedAt` | number                        | Fecha de la última modificación en milisegundos. |
 
 Un ítem no tiene estado `purchased` persistente: al marcarse como comprado se elimina definitivamente del almacenamiento, sin papelera.
 
 ### Catálogo de lugares de compra
 
-Valores predefinidos: `supermercado`, `panadería`, `frutería`, `carnicería`, `centro comercial` y `otros`. El formulario permite también escribir un lugar personalizado como texto libre.
+Valores predefinidos (identificadores estables que se guardan tal cual): `supermercado`, `panaderia`, `fruteria`, `carniceria`, `farmacia`, `papeleria`, `centro-comercial` y `otros`. Las etiquetas visibles se traducen en `src/i18n`. El formulario permite también escribir un lugar personalizado como texto libre, que se guarda como el propio texto.
 
 ### Prioridades
 
@@ -68,6 +69,7 @@ Tres niveles ordenados de mayor a menor urgencia: `alta`, `media` (valor por def
 - Registro: el usuario elige nombre de usuario y contraseña. Se genera un salt aleatorio con `crypto.getRandomValues()` y se deriva el hash con PBKDF2 (SHA-256, 100 000 iteraciones, clave de 256 bits) mediante Web Crypto API. Solo el hash y el salt se guardan; la contraseña nunca se almacena ni sale del navegador.
 - Inicio de sesión: se recalcula el hash con el salt guardado y, si coincide, se abre una sesión.
 - Sesión: el nombre de usuario activo se guarda en `sessionStorage` bajo `ldlc:session`, así la sesión cierra al cerrar la pestaña.
+- Contexto seguro: `crypto.subtle` solo existe en HTTPS o `localhost`. Si la app se sirve por IP en HTTP, el registro y el inicio de sesión muestran un aviso (`auth.cryptoUnavailable`) en lugar de fallar en silencio. Para el desarrollo, usa siempre `http://localhost:5173`.
 - Sin sesión activa solo son accesibles `/:locale/login` y `/:locale/registro`; cualquier otra ruta redirige a `/:locale/login`.
 - Los datos de cada usuario viven bajo su propia clave, así varias personas pueden usar el mismo navegador sin ver los datos ajenos.
 - Limitación conocida: esta autenticación es una barrera de conveniencia, no de seguridad; quien tenga acceso al perfil del navegador puede leer `localStorage`. TODO: valorar cifrar los datos con una clave derivada de la contraseña.
@@ -81,6 +83,15 @@ Tres niveles ordenados de mayor a menor urgencia: `alta`, `media` (valor por def
 - Los textos de la interfaz viven en diccionarios paralelos `src/i18n/es.ts` y `src/i18n/ca.ts` con las mismas claves, servidos por un `LocaleContext` y un hook `useTranslation`. Sin librería de i18n externa.
 - El atributo `lang` del documento se actualiza al idioma activo y las fechas se formatean con `Intl.DateTimeFormat` según el idioma.
 - Los datos del usuario (nombres de listas e ítems, lugares personalizados) no se traducen; solo las etiquetas fijas de la interfaz. Los valores predefinidos del catálogo de lugares y las prioridades se muestran traducidos, pero se guardan como identificadores estables.
+
+## Tema de la interfaz
+
+- Dos temas: claro (`light`) y oscuro (`dark`).
+- Un botón visible en la cabecera de todas las vistas alterna entre ambos y muestra el tema al que se cambiará; su etiqueta accesible se traduce en `es` y `ca`.
+- La preferencia elegida se guarda en `ldlc:theme` en `localStorage` mediante `storage.ts`, así que se mantiene entre sesiones y es común a todos los usuarios del navegador.
+- Si el usuario nunca ha elegido, se usa la preferencia del sistema (`prefers-color-scheme`) como tema inicial, sin guardarla. Un valor guardado no válido se ignora y se aplica la misma precedencia.
+- El tema se gestiona con `ThemeContext` y el hook `useTheme`, y se aplica con el atributo `data-theme` en `<html>`; `color-scheme` adapta los controles nativos (selects, scrollbars).
+- Los colores de ambos temas son variables CSS definidas en `src/styles/index.css`; los estilos usan esas variables en lugar de colores literales.
 
 ## Funcionalidades
 
@@ -107,6 +118,8 @@ Tres niveles ordenados de mayor a menor urgencia: `alta`, `media` (valor por def
 
 - Enfoque mobile-first: la base del CSS está pensada para pantallas pequeñas y las media queries añaden estilos para pantallas mayores (por ejemplo, desde 768 px para tablet y desde 1024 px para escritorio).
 - Una columna en móvil; varias columnas en escritorio para las vistas de listas y agrupaciones.
+- Las filas de ítem usan container queries: pasan de columna a fila según el ancho disponible en su lista, no el de la ventana, para no desbordar dentro de rejillas de varias columnas.
+- La rejilla de filtros solo reserva columnas para los filtros visibles, sin huecos a la derecha.
 - La navegación se adapta al ancho: en móvil, menú compacto; en escritorio, barra completa.
 - Objetivos táctiles de al menos 44 × 44 px y ninguna interacción que dependa de hover.
 - Meta viewport configurada (`width=device-width, initial-scale=1`) y sin scroll horizontal en ningún ancho de pantalla.
@@ -116,13 +129,14 @@ Tres niveles ordenados de mayor a menor urgencia: `alta`, `media` (valor por def
 - React 18 con Vite y TypeScript.
 - React Router para las rutas con prefijo de idioma: `/:locale/login`, `/:locale/registro`, `/:locale/listas`, `/:locale/lista/:id`, `/:locale/por-prioridad` y `/:locale/por-lugar`.
 - Internacionalización propia en `es` y `ca` con diccionarios en `src/i18n` y prefijo de idioma en la URL; sin librería de i18n externa.
-- Estado global con React Context y `useReducer`; toda la persistencia pasa por un servicio `storage.ts` que serializa a `localStorage`.
+- Estado global con React Context y `useReducer`; toda la persistencia pasa por un servicio `storage.ts` que serializa a `localStorage`. El idioma y el tema viven en `LocaleContext` y `ThemeContext` respectivamente.
+- Tema claro/oscuro con variables CSS y el atributo `data-theme` en `<html>`, sin dependencias nuevas.
 - Hash de contraseñas con Web Crypto API (PBKDF2) y UUID con `crypto.randomUUID()`.
 - Cero llamadas de red: sin `fetch`, sin backend y sin telemetría.
-- Pruebas con Vitest y React Testing Library que cubran registro, inicio de sesión, crear/editar/eliminar ítem, marcar como comprado y las agrupaciones por prioridad y lugar.
-- Accesibilidad básica: etiquetas en todos los campos, foco visible y contraste suficiente.
+- Pruebas con Vitest y React Testing Library que cubran registro, inicio de sesión, crear/editar/eliminar ítem, marcar como comprado, las agrupaciones por prioridad y lugar, y la persistencia del tema. En `src/test/utils.tsx` hay utilidades compartidas (`renderApp`, seeds); jsdom no trae Web Crypto, así que `vitest.setup.ts` usa la de Node.
+- Accesibilidad básica: etiquetas en todos los campos, foco visible y contraste suficiente en ambos temas.
 - Entorno de desarrollo en devcontainer (`.devcontainer/devcontainer.json`); las dependencias se instalan dentro del contenedor y no se instala nada en el host.
-- Diseño responsive con CSS plano y media queries (mobile-first), sin librería de componentes UI; la app debe ser usable en pantallas de PC y de móvil.
+- Diseño responsive con CSS plano, media queries y container queries (mobile-first), sin librería de componentes UI; la app debe ser usable en pantallas de PC y de móvil.
 
 ## Criterios de aceptación
 
@@ -134,3 +148,4 @@ Tres niveles ordenados de mayor a menor urgencia: `alta`, `media` (valor por def
 - [ ] Ninguna funcionalidad utiliza la red.
 - [ ] La interfaz se adapta y es usable en pantallas de PC y de móvil, comprobado en ambos tamaños de viewport.
 - [ ] La app está disponible en castellano y catalán, y el idioma se puede elegir desde la app y desde la URL (`/es/...` y `/ca/...`).
+- [ ] El tema claro/oscuro se puede cambiar desde la cabecera, se aplica a toda la interfaz y la elección se conserva tras recargar.

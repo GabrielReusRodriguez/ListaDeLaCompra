@@ -1,92 +1,83 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import { ShoppingProvider } from './context/ShoppingContext';
+import { Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { RequireAuth } from './components/RequireAuth';
+import { AuthProvider } from './context/AuthContext';
 import { LocaleProvider } from './context/LocaleContext';
+import { ShoppingProvider } from './context/ShoppingContext';
+import { ThemeProvider } from './context/ThemeContext';
 import {
-  LoginPage,
-  RegisterPage,
-  ListsPage,
-  ListDetailPage,
   ByPriorityPage,
   ByStorePage,
+  ListDetailPage,
+  ListsPage,
+  LoginPage,
+  RegisterPage,
 } from './pages';
+import { RootRedirect } from './pages/RootRedirect';
+import { isLocale } from './types';
 
-function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuth();
-  const { lang } = useParams<{ lang: string }>();
-  const langPrefix = lang || 'es';
+/** Rutas con prefijo de idioma: `/:locale/...`. */
+function LocaleRoutes() {
+  const { locale } = useParams<{ locale: string }>();
 
-  if (!isAuthenticated) {
-    return <Navigate to={`/${langPrefix}/login`} replace />;
+  if (!isLocale(locale)) {
+    return <RootRedirect />;
   }
 
-  return <>{children}</>;
-}
-
-function LanguageRedirect() {
-  const { lang } = useParams<{ lang: string }>();
-  const defaultLang = lang || 'es';
-
-  return <Navigate to={`/${defaultLang}/login`} replace />;
-}
-
-function AppRoutes() {
-  return (
-    <Routes>
-      <Route path="/" element={<LanguageRedirect />} />
-      <Route path="/:lang/login" element={<LoginPage />} />
-      <Route path="/:lang/registro" element={<RegisterPage />} />
-      
-      <Route
-        path="/:lang/listas"
-        element={
-          <AuthGuard>
-            <ListsPage />
-          </AuthGuard>
-        }
-      />
-      <Route
-        path="/:lang/lista/:id"
-        element={
-          <AuthGuard>
-            <ListDetailPage />
-          </AuthGuard>
-        }
-      />
-      <Route
-        path="/:lang/por-prioridad"
-        element={
-          <AuthGuard>
-            <ByPriorityPage />
-          </AuthGuard>
-        }
-      />
-      <Route
-        path="/:lang/por-lugar"
-        element={
-          <AuthGuard>
-            <ByStorePage />
-          </AuthGuard>
-        }
-      />
-      
-      <Route path="*" element={<Navigate to="/es/login" replace />} />
-    </Routes>
-  );
-}
-
-function App() {
   return (
     <LocaleProvider>
       <AuthProvider>
         <ShoppingProvider>
-          <BrowserRouter>
-            <AppRoutes />
-          </BrowserRouter>
+          <Routes>
+            <Route path="login" element={<LoginPage />} />
+            <Route path="registro" element={<RegisterPage />} />
+            <Route
+              path="listas"
+              element={
+                <RequireAuth>
+                  <ListsPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="lista/:id"
+              element={
+                <RequireAuth>
+                  <ListDetailPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="por-prioridad"
+              element={
+                <RequireAuth>
+                  <ByPriorityPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="por-lugar"
+              element={
+                <RequireAuth>
+                  <ByStorePage />
+                </RequireAuth>
+              }
+            />
+            <Route path="*" element={<Navigate to={`/${locale}/listas`} replace />} />
+          </Routes>
         </ShoppingProvider>
       </AuthProvider>
     </LocaleProvider>
+  );
+}
+
+export function App() {
+  return (
+    <ThemeProvider>
+      <Routes>
+        <Route path="/" element={<RootRedirect />} />
+        <Route path="/:locale/*" element={<LocaleRoutes />} />
+      </Routes>
+    </ThemeProvider>
   );
 }
 

@@ -1,82 +1,112 @@
-import { User, AppData } from '../types';
+import type { Locale, Theme, User, UserData } from '../types';
 
-const USERS_KEY = 'ldlc:users';
-const DATA_PREFIX = 'ldlc:data:';
-const LANG_KEY = 'ldlc:lang';
-const SESSION_KEY = 'ldlc:session';
+/**
+ * Único punto de acceso a `localStorage` y `sessionStorage`.
+ * Ningún componente debe tocar el almacenamiento directamente.
+ */
 
-export const storage = {
-  // Users
-  getUsers(): User[] {
-    const data = localStorage.getItem(USERS_KEY);
-    return data ? JSON.parse(data) : [];
-  },
+export const STORAGE_KEYS = {
+  users: 'ldlc:users',
+  dataPrefix: 'ldlc:data:',
+  lang: 'ldlc:lang',
+  theme: 'ldlc:theme',
+  session: 'ldlc:session',
+} as const;
 
-  saveUsers(users: User[]): void {
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
-  },
+export function dataKey(username: string): string {
+  return `${STORAGE_KEYS.dataPrefix}${username}`;
+}
 
-  getUser(username: string): User | null {
-    const users = this.getUsers();
-    return users.find(u => u.username === username) || null;
-  },
+function readJson<T>(storage: Storage, key: string, fallback: T): T {
+  try {
+    const raw = storage.getItem(key);
+    if (raw === null) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
 
-  saveUser(user: User): void {
-    const users = this.getUsers();
-    const existingIndex = users.findIndex(u => u.username === user.username);
-    if (existingIndex >= 0) {
-      users[existingIndex] = user;
-    } else {
-      users.push(user);
-    }
-    this.saveUsers(users);
-  },
+function writeJson(storage: Storage, key: string, value: unknown): void {
+  storage.setItem(key, JSON.stringify(value));
+}
 
-  deleteUser(username: string): void {
-    const users = this.getUsers();
-    const filtered = users.filter(u => u.username !== username);
-    this.saveUsers(filtered);
-    // Also delete user data
-    localStorage.removeItem(`${DATA_PREFIX}${username}`);
-  },
+function readString(storage: Storage, key: string): string | null {
+  try {
+    return storage.getItem(key);
+  } catch {
+    return null;
+  }
+}
 
-  // App Data
-  getAppData(username: string): AppData {
-    const data = localStorage.getItem(`${DATA_PREFIX}${username}`);
-    return data ? JSON.parse(data) : { lists: [], items: [] };
-  },
+function writeString(storage: Storage, key: string, value: string): void {
+  storage.setItem(key, value);
+}
 
-  saveAppData(username: string, data: AppData): void {
-    localStorage.setItem(`${DATA_PREFIX}${username}`, JSON.stringify(data));
-  },
+function remove(storage: Storage, key: string): void {
+  storage.removeItem(key);
+}
 
-  // Language
-  getLanguage(): string {
-    return localStorage.getItem(LANG_KEY) || 'es';
-  },
+/* ------------------------------- Usuarios ------------------------------- */
 
-  setLanguage(lang: string): void {
-    localStorage.setItem(LANG_KEY, lang);
-  },
+export function getUsers(): User[] {
+  const users = readJson<unknown>(localStorage, STORAGE_KEYS.users, []);
+  return Array.isArray(users) ? (users as User[]) : [];
+}
 
-  // Session
-  getSession(): string | null {
-    return sessionStorage.getItem(SESSION_KEY);
-  },
+export function getUser(username: string): User | null {
+  return getUsers().find((user) => user.username === username) ?? null;
+}
 
-  setSession(username: string): void {
-    sessionStorage.setItem(SESSION_KEY, username);
-  },
+export function saveUser(user: User): void {
+  const users = getUsers().filter((existing) => existing.username !== user.username);
+  writeJson(localStorage, STORAGE_KEYS.users, [...users, user]);
+}
 
-  clearSession(): void {
-    sessionStorage.removeItem(SESSION_KEY);
-  },
+/* ----------------------------- Datos de usuario ----------------------------- */
 
-  // Clear all
-  clearAll(): void {
-    localStorage.clear();
-    sessionStorage.clear();
-  },
-};
+export function getData(username: string): UserData {
+  const data = readJson<Partial<UserData>>(localStorage, dataKey(username), {});
+  return {
+    lists: Array.isArray(data.lists) ? data.lists : [],
+    items: Array.isArray(data.items) ? data.items : [],
+  };
+}
 
-export default storage;
+export function saveData(username: string, data: UserData): void {
+  writeJson(localStorage, dataKey(username), data);
+}
+
+/* -------------------------------- Idioma -------------------------------- */
+
+export function getSavedLocale(): string | null {
+  return readString(localStorage, STORAGE_KEYS.lang);
+}
+
+export function saveLocale(locale: Locale): void {
+  writeString(localStorage, STORAGE_KEYS.lang, locale);
+}
+
+/* --------------------------------- Tema --------------------------------- */
+
+export function getSavedTheme(): string | null {
+  return readString(localStorage, STORAGE_KEYS.theme);
+}
+
+export function saveTheme(theme: Theme): void {
+  writeString(localStorage, STORAGE_KEYS.theme, theme);
+}
+
+/* -------------------------------- Sesión -------------------------------- */
+
+export function getSession(): string | null {
+  return readString(sessionStorage, STORAGE_KEYS.session);
+}
+
+export function setSession(username: string): void {
+  writeString(sessionStorage, STORAGE_KEYS.session, username);
+}
+
+export function clearSession(): void {
+  remove(sessionStorage, STORAGE_KEYS.session);
+}

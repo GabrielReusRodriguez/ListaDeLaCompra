@@ -1,88 +1,88 @@
-import React, { useState } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useId, useState, type FormEvent } from 'react';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Header } from '../components/Header';
 import { useAuth } from '../context/AuthContext';
-import { useLocale } from '../context/LocaleContext';
+import { useLocalePath } from '../hooks/useLocalePath';
+import { useTranslation } from '../hooks/useTranslation';
 
-interface LoginPageProps {
-  onLogin?: () => void;
-}
-
-export function LoginPage({ onLogin }: LoginPageProps) {
-  const { login } = useAuth();
-  const { locale } = useLocale();
+export function LoginPage() {
+  const { t } = useTranslation();
+  const { username, login } = useAuth();
+  const path = useLocalePath();
   const navigate = useNavigate();
-  const { lang } = useParams<{ lang: string }>();
-  const currentLang = lang || locale;
+  const id = useId();
 
-  const [username, setUsername] = useState('');
+  const [user, setUser] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+  if (username) {
+    return <Navigate to={path('/listas')} replace />;
+  }
 
-    if (!username || !password) {
-      setError('Username and password are required');
-      return;
-    }
-
-    const success = await login(username, password);
-    if (success) {
-      navigate(`/${currentLang}/listas`);
-      if (onLogin) onLogin();
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    const result = await login(user, password);
+    setSubmitting(false);
+    if (result.ok) {
+      navigate(path('/listas'), { replace: true });
     } else {
-      setError('Invalid username or password');
+      setError(
+        result.error === 'crypto-unavailable'
+          ? t.auth.cryptoUnavailable
+          : t.auth.invalidCredentials,
+      );
     }
   };
 
   return (
-    <div className="auth-page">
-      <div className="auth-card">
-        <h1>Lista de la Compra</h1>
-        <h2>Iniciar sesión</h2>
-        
-        {error && <div className="error-message">{error}</div>}
-        
-        <form onSubmit={handleSubmit} className="auth-form">
-          <div className="form-group">
-            <label htmlFor="username">Nombre de usuario</label>
-            <input
-              type="text"
-              id="username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-            />
-          </div>
-          
-          <div className="form-group">
-            <label htmlFor="password">Contraseña</label>
-            <input
-              type="password"
-              id="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-          
-          <button type="submit" className="btn btn-primary btn-full">
-            Iniciar sesión
-          </button>
-        </form>
-        
-        <div className="auth-footer">
-          <p>¿No tienes cuenta? <Link to={`/${currentLang}/registro`}>Regístrate</Link></p>
+    <div className="layout">
+      <Header />
+      <main className="main auth" id="main-content">
+        <div className="card auth__card">
+          <h1>{t.auth.loginTitle}</h1>
+          <form className="form" onSubmit={handleSubmit} noValidate>
+            {error && (
+              <p className="form__error" role="alert">
+                {error}
+              </p>
+            )}
+            <div className="field">
+              <label htmlFor={`${id}-user`}>{t.auth.username}</label>
+              <input
+                id={`${id}-user`}
+                type="text"
+                value={user}
+                onChange={(event) => setUser(event.target.value)}
+                autoComplete="username"
+                autoCapitalize="none"
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor={`${id}-password`}>{t.auth.password}</label>
+              <input
+                id={`${id}-password`}
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </div>
+            <button type="submit" className="btn btn--primary btn--block" disabled={submitting}>
+              {t.auth.loginAction}
+            </button>
+          </form>
+          <p className="auth__switch">
+            <Link to={path('/registro')}>{t.auth.toRegister}</Link>
+          </p>
+          <p className="auth__note">{t.auth.localOnly}</p>
         </div>
-        
-        <div className="language-selector">
-          <Link to="/es/login" className={currentLang === 'es' ? 'active' : ''}>Español</Link>
-          <Link to="/ca/login" className={currentLang === 'ca' ? 'active' : ''}>Català</Link>
-        </div>
-      </div>
+      </main>
     </div>
   );
 }
-
-export default LoginPage;

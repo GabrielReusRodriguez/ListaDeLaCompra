@@ -1,86 +1,144 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { ConfirmDialog, Filters, ItemForm, ItemRow, Modal } from '../components';
+import { Header } from '../components/Header';
 import { useShopping } from '../context/ShoppingContext';
-import { useTranslation } from '../hooks';
-import { ItemRow, Modal, Header } from '../components';
+import { useLocalePath } from '../hooks/useLocalePath';
+import { interpolate, useTranslation } from '../hooks/useTranslation';
+import { collectStores, filterItems, groupByPriority, sortByPriority } from '../lib/shopping';
+import {
+  createEmptyFilters,
+  type Filters as FiltersState,
+  type Item,
+  type ItemInput,
+} from '../types';
 
 export function ListDetailPage() {
   const { t } = useTranslation();
-  const { lists, items, activeListId } = useShopping();
-  const { id, lang } = useParams<{ id: string; lang: string }>();
-  const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
+  const { lists, items, addItem, updateItem, deleteItem, markAsPurchased } = useShopping();
+  const path = useLocalePath();
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [filters, setFilters] = useState<FiltersState>(createEmptyFilters);
+  const [editing, setEditing] = useState<Item | 'new' | null>(null);
+  const [deleting, setDeleting] = useState<Item | null>(null);
 
-  const activeList = lists.find(l => l.id === (id || activeListId));
+  const list = lists.find((candidate) => candidate.id === id);
+  const listItems = useMemo(() => items.filter((item) => item.listId === id), [items, id]);
+  const stores = useMemo(() => collectStores(listItems), [listItems]);
 
-  useEffect(() => {
-    if (id && !activeList) {
-      navigate(`/${lang}/listas`);
-    }
-  }, [id, activeList, lang, navigate]);
+  const visible = useMemo(() => {
+    const scoped = filterItems(listItems, { ...filters, listId: 'all' });
+    return sortByPriority(scoped);
+  }, [listItems, filters]);
 
-  const listItems = items.filter(item => item.listId === (id || activeListId));
+  const groups = useMemo(() => groupByPriority(visible), [visible]);
 
-  const handleAddItem = () => {
-    setIsModalOpen(true);
-  };
-
-  if (!activeList) {
+  if (!list) {
     return (
-      <div className="page">
+      <div className="layout">
         <Header />
-        <main className="main-content">
-          <p>Lista no encontrada</p>
+        <main className="main" id="main-content">
+          <p className="empty-state">{t.detail.notFound}</p>
+          <Link className="btn btn--primary" to={path('/listas')}>
+            {t.detail.backToLists}
+          </Link>
         </main>
       </div>
     );
   }
 
+  const handleSubmit = (input: ItemInput) => {
+    if (editing && editing !== 'new') {
+      updateItem(editing.id, input);
+    } else {
+      addItem(input);
+    }
+    setEditing(null);
+  };
+
   return (
-    <div className="page">
+    <div className="layout">
       <Header />
-      
-      <main className="main-content">
+      <main className="main" id="main-content">
         <div className="page-header">
-          <h1>{activeList.name}</h1>
-          <button onClick={handleAddItem} className="btn btn-primary">
-            {t('newItem')}
+          <div>
+            <p className="breadcrumb">
+              <Link to={path('/listas')}>{t.nav.lists}</Link>
+            </p>
+            <h1>{list.name}</h1>
+          </div>
+          <button type="button" className="btn btn--primary" onClick={() => setEditing('new')}>
+            {t.item.newItem}
           </button>
         </div>
 
+        <Filters
+          filters={filters}
+          onChange={setFilters}
+          lists={lists}
+          stores={stores}
+          showList={false}
+          resultCount={visible.length}
+        />
+
         {listItems.length === 0 ? (
-          <div className="empty-state">
-            <p>{t('noItems')}</p>
-            <button onClick={handleAddItem} className="btn btn-primary">
-              {t('newItem')}
-            </button>
-          </div>
+          <p className="empty-state">{t.detail.empty}</p>
+        ) : visible.length === 0 ? (
+          <p className="empty-state">{t.detail.emptyFiltered}</p>
         ) : (
-          <div className="items-list">
-            {listItems
-              .sort((a, b) => {
-                const priorityOrder = { alta: 0, media: 1, baja: 2 };
-                const priorityA = priorityOrder[a.priority];
-                const priorityB = priorityOrder[b.priority];
-                if (priorityA !== priorityB) return priorityA - priorityB;
-                return a.createdAt - b.createdAt;
-              })
-              .map((item) => (
-                <ItemRow
-                  key={item.id}
-                  item={item}
-                />
-              ))}
-          </div>
+          groups.map((group) => (
+            <section
+              key={group.priority}
+              className="group"
+              aria-labelledby={`group-${group.priority}`}
+            >
+              <h2 id={`group-${group.priority}`} className="group__title">
+                {t.priority[group.priority]}
+                <span className="group__count">{group.items.length}</span>
+              </h2>
+              <ul className="item-list">
+                {group.items.map((item) => (
+                  <ItemRow
+                    key={item.id}
+                    item={item}
+                    onEdit={() => setEditing(item)}
+                    onDelete={() => setDeleting(item)}
+                    onMarkPurchased={() => markAsPurchased(item.id)}
+                  />
+                ))}
+              </ul>
+            </section>
+          ))
         )}
       </main>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
-        <div>Item Form Modal</div>
-      </Modal>
+      {editing && (
+        <Modal
+          title={editing === 'new' ? t.item.newItem : t.item.editItem}
+          onClose={() => setEditing(null)}
+        >
+          <ItemForm
+            lists={lists}
+            defaultListId={list.id}
+            item={editing === 'new' ? undefined : editing}
+            onSubmit={handleSubmit}
+            onCancel={() => setEditing(null)}
+          />
+        </Modal>
+      )}
+
+      {deleting && (
+        <ConfirmDialog
+          title={t.item.deleteTitle}
+          message={interpolate(t.item.deleteConfirm, { name: deleting.name })}
+          onConfirm={() => {
+            deleteItem(deleting.id);
+            setDeleting(null);
+          }}
+          onCancel={() => setDeleting(null)}
+        />
+      )}
     </div>
   );
 }
-
-export default ListDetailPage;

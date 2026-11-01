@@ -1,108 +1,66 @@
-import { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
-import { AuthState, AuthAction } from '../types';
-import { loginUser, registerUser, logout, getActiveUser, isAuthenticated as checkAuth } from '../services/auth';
-import storage from '../services/storage';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import * as auth from '../services/auth';
 
-const initialState: AuthState = {
-  isAuthenticated: false,
-  user: null,
-};
-
-function authReducer(state: AuthState, action: AuthAction): AuthState {
-  switch (action.type) {
-    case 'LOGIN':
-      return {
-        ...state,
-        isAuthenticated: true,
-        user: action.payload,
-      };
-    case 'LOGOUT':
-      return {
-        ...state,
-        isAuthenticated: false,
-        user: null,
-      };
-    case 'REGISTER':
-      return {
-        ...state,
-        isAuthenticated: true,
-        user: action.payload,
-      };
-    default:
-      return state;
-  }
-}
-
-interface AuthContextType extends AuthState {
-  login: (username: string, password: string) => Promise<boolean>;
-  register: (username: string, password: string) => Promise<boolean>;
+export interface AuthContextValue {
+  username: string | null;
+  ready: boolean;
+  login: (username: string, password: string) => Promise<auth.AuthResult>;
+  register: (username: string, password: string) => Promise<auth.AuthResult>;
   logout: () => void;
-  checkAuth: () => boolean;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+export const AuthContext = createContext<AuthContextValue | null>(null);
 
 interface AuthProviderProps {
   children: ReactNode;
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
-  const [state, dispatch] = useReducer(authReducer, initialState);
+  const [username, setUsername] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const sessionUser = getActiveUser();
-    if (sessionUser) {
-      const user = storage.getUser(sessionUser);
-      if (user) {
-        dispatch({ type: 'LOGIN', payload: user });
-      }
-    }
+    setUsername(auth.getSessionUsername());
+    setReady(true);
   }, []);
 
-  const handleLogin = async (username: string, password: string): Promise<boolean> => {
-    const user = await loginUser(username, password);
-    if (user) {
-      storage.setSession(username);
-      dispatch({ type: 'LOGIN', payload: user });
-      return true;
-    }
-    return false;
-  };
+  const login = useCallback(async (name: string, password: string) => {
+    const result = await auth.loginUser(name, password);
+    if (result.ok) setUsername(result.user.username);
+    return result;
+  }, []);
 
-  const handleRegister = async (username: string, password: string): Promise<boolean> => {
-    const user = await registerUser(username, password);
-    if (user) {
-      storage.setSession(username);
-      dispatch({ type: 'REGISTER', payload: user });
-      return true;
-    }
-    return false;
-  };
+  const register = useCallback(async (name: string, password: string) => {
+    const result = await auth.registerUser(name, password);
+    if (result.ok) setUsername(result.user.username);
+    return result;
+  }, []);
 
-  const handleLogout = () => {
-    logout();
-    dispatch({ type: 'LOGOUT' });
-  };
+  const logout = useCallback(() => {
+    auth.logout();
+    setUsername(null);
+  }, []);
 
-
-
-  const value: AuthContextType = {
-    ...state,
-    login: handleLogin,
-    register: handleRegister,
-    logout: handleLogout,
-    checkAuth,
-  };
+  const value = useMemo<AuthContextValue>(
+    () => ({ username, ready, login, register, logout }),
+    [username, ready, login, register, logout],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth(): AuthContextType {
+export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+  if (!context) {
+    throw new Error('useAuth debe usarse dentro de AuthProvider');
   }
   return context;
 }
-
-export default AuthContext;

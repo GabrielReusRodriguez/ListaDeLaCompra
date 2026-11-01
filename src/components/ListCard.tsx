@@ -1,42 +1,41 @@
-import React from 'react';
-import { ShoppingList } from '../types';
-import { useTranslation } from '../hooks';
-import { useShopping } from '../context/ShoppingContext';
+import { interpolate, useTranslation } from '../hooks/useTranslation';
+import type { ShoppingList } from '../types';
 
 interface ListCardProps {
   list: ShoppingList;
-  onSelect?: () => void;
+  pendingCount: number;
+  onOpen: () => void;
+  onRename: () => void;
+  onDelete: () => void;
 }
 
-export function ListCard({ list, onSelect }: ListCardProps) {
+export function ListCard({ list, pendingCount, onOpen, onRename, onDelete }: ListCardProps) {
   const { t } = useTranslation();
-  const { setActiveList, deleteList } = useShopping();
-
-  const handleSelect = () => {
-    setActiveList(list.id);
-    if (onSelect) onSelect();
-  };
-
-  const handleDelete = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (window.confirm(t('delete') + ' ' + list.name + '?')) {
-      deleteList(list.id);
-    }
-  };
+  const countLabel =
+    pendingCount === 0
+      ? t.lists.itemCountZero
+      : pendingCount === 1
+        ? t.lists.itemCountOne
+        : interpolate(t.lists.itemCount, { count: pendingCount });
 
   return (
-    <div className="list-card" onClick={handleSelect}>
-      <div className="list-card-content">
-        <h3>{list.name}</h3>
-        <p className="list-date">
-          {new Date(list.createdAt).toLocaleDateString()}
-        </p>
-      </div>
-      <button onClick={handleDelete} className="btn-icon btn-danger">
-        ×
+    <article className="card list-card">
+      <button type="button" className="list-card__main" onClick={onOpen}>
+        <span className="list-card__name">{list.name}</span>
+        <span className="list-card__count">{countLabel}</span>
       </button>
-    </div>
+      <div className="list-card__actions">
+        <button type="button" className="btn btn--ghost btn--small" onClick={onRename}>
+          {t.common.edit}
+        </button>
+        <button
+          type="button"
+          className="btn btn--ghost btn--small btn--danger-text"
+          onClick={onDelete}
+        >
+          {t.common.delete}
+        </button>
+      </div>
+    </article>
   );
 }
-
-export default ListCard;
