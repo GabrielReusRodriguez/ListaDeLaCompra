@@ -9,10 +9,7 @@ import type { Item, ShoppingList, UserData } from '../types';
 export function renderApp(initialPath = '/es/login') {
   const user = userEvent.setup();
   const utils = render(
-    <MemoryRouter
-      initialEntries={[initialPath]}
-      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
-    >
+    <MemoryRouter initialEntries={[initialPath]}>
       <App />
     </MemoryRouter>,
   );
