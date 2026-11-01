@@ -1,6 +1,6 @@
 # Lista de la compra
 
-Aplicación web para gestionar listas de la compra de forma **privada y 100 % local**: sin servidor, sin nube y sin ninguna llamada de red. Los datos se guardan en el `localStorage` del navegador y el acceso está protegido por autenticación local.
+Aplicación web para gestionar listas de la compra de forma **privada y 100 % local**: sin servidor, sin nube y sin ninguna llamada de red. Los datos se guardan cifrados en el `localStorage` del navegador y el acceso está protegido por autenticación local.
 
 La especificación funcional completa está en [Specs.md](Specs.md) y las instrucciones para agentes en [Agents.md](Agents.md).
 
@@ -12,6 +12,7 @@ La especificación funcional completa está en [Specs.md](Specs.md) y las instru
 - Vista de lista ordenada por prioridad; vista por prioridad de todas las listas; vista agrupada por lugar de compra.
 - Buscador por nombre y filtros por lista, prioridad y lugar en las tres vistas.
 - Registro e inicio de sesión local con PBKDF2-SHA-256 (100 000 iteraciones).
+- Datos cifrados en el navegador con AES-GCM-256 y una clave derivada de la contraseña.
 - Castellano y catalán, elegibles desde la app o por el prefijo de la URL (`/es/...`, `/ca/...`).
 - Tema claro u oscuro, elegible con un botón y persistente entre sesiones; si no se ha elegido, respeta `prefers-color-scheme`.
 - Diseño responsive mobile-first, con objetivos táctiles de al menos 44 × 44 px.
@@ -29,7 +30,7 @@ npm install
 npm run dev -- --host 0.0.0.0
 ```
 
-Abre `http://localhost:5173`. Usa `localhost` y no la IP de la máquina: Web Crypto (necesaria para el hash de contraseñas) solo está disponible en contextos seguros.
+Abre `http://localhost:5173`. Usa `localhost` y no la IP de la máquina: Web Crypto (necesaria para el hash de contraseñas y el cifrado de datos) solo está disponible en contextos seguros.
 
 ## Scripts
 
@@ -55,7 +56,7 @@ src/
 ├── components/   # Header, Filters, ItemForm, ItemRow, ListCard, Modal...
 ├── pages/        # Login, Register, Lists, ListDetail, ByPriority, ByStore
 ├── context/      # AuthContext, ShoppingContext (useReducer), LocaleContext, ThemeContext
-├── services/     # storage.ts (único acceso al almacenamiento), auth.ts, crypto.ts
+├── services/     # storage.ts (único acceso al almacenamiento), crypto.ts, secureStorage.ts, auth.ts
 ├── lib/          # shopping.ts: reducer, ordenación, filtros y agrupaciones
 ├── hooks/        # useTranslation, useLocalePath, useTheme
 ├── i18n/         # diccionarios es/ca, detección de idioma y formateo
@@ -66,15 +67,16 @@ src/
 
 ## Almacenamiento
 
-| Clave                 | Dónde            | Contenido                                                       |
-| --------------------- | ---------------- | --------------------------------------------------------------- |
-| `ldlc:users`          | `localStorage`   | Credenciales: usuario, salt y hash PBKDF2. Nunca la contraseña. |
-| `ldlc:data:<usuario>` | `localStorage`   | Listas e ítems de cada usuario.                                 |
-| `ldlc:lang`           | `localStorage`   | Idioma elegido.                                                 |
-| `ldlc:theme`          | `localStorage`   | Tema de la interfaz (`light` o `dark`).                         |
-| `ldlc:session`        | `sessionStorage` | Usuario con la sesión abierta; se pierde al cerrar la pestaña.  |
+| Clave                 | Dónde            | Contenido                                                               |
+| --------------------- | ---------------- | ----------------------------------------------------------------------- |
+| `ldlc:users`          | `localStorage`   | Credenciales: usuario, salt y hash PBKDF2. Nunca la contraseña.         |
+| `ldlc:data:<usuario>` | `localStorage`   | Listas e ítems de cada usuario, cifrados con AES-GCM-256.               |
+| `ldlc:lang`           | `localStorage`   | Idioma elegido.                                                         |
+| `ldlc:theme`          | `localStorage`   | Tema de la interfaz (`light` o `dark`).                                 |
+| `ldlc:session`        | `sessionStorage` | Usuario con la sesión abierta; se pierde al cerrar la pestaña.          |
+| `ldlc:key:<usuario>`  | `sessionStorage` | Clave AES-GCM (JWK) derivada de la contraseña; nunca en `localStorage`. |
 
-> La autenticación es una barrera de conveniencia, no de seguridad: quien tenga acceso al perfil del navegador puede leer `localStorage`.
+> La clave de cifrado vive en `sessionStorage` mientras la pestaña está abierta, así que con la sesión iniciada se puede descifrar desde DevTools. La protección real es frente al dato en reposo: un volcado de `localStorage`, una copia de seguridad o la sincronización del navegador solo contienen texto cifrado.
 
 ## Rutas
 

@@ -21,7 +21,7 @@ Aplicación web en React para gestionar listas de la compra de forma privada: si
 
 ## Modelo de datos
 
-Toda la información se guarda en `localStorage` como JSON, aislada por usuario. Las claves son `ldlc:users` para las credenciales, `ldlc:data:<username>` para los datos de cada usuario y las preferencias globales `ldlc:lang` (idioma) y `ldlc:theme` (tema). La sesión activa se guarda en `sessionStorage` con la clave `ldlc:session`.
+Toda la información se guarda en `localStorage` como JSON, aislada por usuario. Las claves son `ldlc:users` para las credenciales, `ldlc:data:<username>` para los datos de cada usuario (cifrados con AES-GCM, ver «Cifrado de los datos») y las preferencias globales `ldlc:lang` (idioma) y `ldlc:theme` (tema). La sesión activa se guarda en `sessionStorage` con la clave `ldlc:session` y la clave de cifrado con `ldlc:key:<username>`.
 
 ### Usuario
 
@@ -66,13 +66,22 @@ Tres niveles ordenados de mayor a menor urgencia: `alta`, `media` (valor por def
 
 ## Autenticación local
 
-- Registro: el usuario elige nombre de usuario y contraseña. Se genera un salt aleatorio con `crypto.getRandomValues()` y se deriva el hash con PBKDF2 (SHA-256, 100 000 iteraciones, clave de 256 bits) mediante Web Crypto API. Solo el hash y el salt se guardan; la contraseña nunca se almacena ni sale del navegador.
-- Inicio de sesión: se recalcula el hash con el salt guardado y, si coincide, se abre una sesión.
-- Sesión: el nombre de usuario activo se guarda en `sessionStorage` bajo `ldlc:session`, así la sesión cierra al cerrar la pestaña.
+- Registro: el usuario elige nombre de usuario y contraseña. Se genera un salt aleatorio con `crypto.getRandomValues()` y se derivan con PBKDF2 (SHA-256, 100 000 iteraciones) 512 bits mediante Web Crypto API: los 256 primeros son el hash de verificación y los 256 restantes la clave AES-GCM-256 que cifra los datos. Solo el hash y el salt se guardan; la contraseña nunca se almacena ni sale del navegador.
+- Inicio de sesión: se recalcula el hash con el salt guardado y, si coincide, se abre una sesión y se dispone de la clave de cifrado derivada en la misma pasada.
+- Sesión: el nombre de usuario activo se guarda en `sessionStorage` bajo `ldlc:session`, así la sesión cierra al cerrar la pestaña. La clave de cifrado se guarda también en `sessionStorage` bajo `ldlc:key:<username>` (en formato JWK) para sobrevivir a una recarga sin pedir la contraseña; nunca se escribe en `localStorage`.
 - Contexto seguro: `crypto.subtle` solo existe en HTTPS o `localhost`. Si la app se sirve por IP en HTTP, el registro y el inicio de sesión muestran un aviso (`auth.cryptoUnavailable`) en lugar de fallar en silencio. Para el desarrollo, usa siempre `http://localhost:5173`.
 - Sin sesión activa solo son accesibles `/:locale/login` y `/:locale/registro`; cualquier otra ruta redirige a `/:locale/login`.
 - Los datos de cada usuario viven bajo su propia clave, así varias personas pueden usar el mismo navegador sin ver los datos ajenos.
-- Limitación conocida: esta autenticación es una barrera de conveniencia, no de seguridad; quien tenga acceso al perfil del navegador puede leer `localStorage`. TODO: valorar cifrar los datos con una clave derivada de la contraseña.
+- Limitación conocida: la clave de cifrado vive en `sessionStorage` mientras la pestaña está abierta, así que quien tenga acceso al perfil del navegador con la sesión iniciada puede descifrar los datos. La protección real es frente al contenido en reposo: un volcado de `localStorage`, una copia de seguridad o la sincronización del navegador solo contienen texto cifrado.
+
+## Cifrado de los datos
+
+- Los datos de cada usuario se guardan en `ldlc:data:<username>` cifrados con AES-GCM-256 y una clave derivada de la contraseña (ver «Autenticación local»). El valor almacenado tiene la forma `{ "v": 1, "alg": "AES-GCM", "iv": "<base64>", "ct": "<base64>" }`.
+- Cada escritura genera un IV aleatorio de 12 bytes con `crypto.getRandomValues()`; nunca se reutiliza un IV con la misma clave.
+- La clave AES solo existe en memoria y en `sessionStorage` (`ldlc:key:<username>`); `ldlc:users` guarda únicamente salt y hash.
+- Los datos creados antes de introducir el cifrado (JSON en claro en `ldlc:data:<username>`) se migran automáticamente al iniciar sesión: se descifran una vez, se vuelven a guardar cifrados y la versión en claro se sobrescribe.
+- Si el contenido no se puede descifrar (clave de otra cuenta o datos manipulados), la app carga datos vacíos en lugar de romper.
+- La lógica vive en `src/services/crypto.ts` (derivación, AES-GCM, IV) y `src/services/secureStorage.ts` (lectura, escritura serializada y migración); `storage.ts` solo accede al almacenamiento crudo.
 
 ## Internacionalización (i18n)
 
@@ -132,8 +141,9 @@ Tres niveles ordenados de mayor a menor urgencia: `alta`, `media` (valor por def
 - Estado global con React Context y `useReducer`; toda la persistencia pasa por un servicio `storage.ts` que serializa a `localStorage`. El idioma y el tema viven en `LocaleContext` y `ThemeContext` respectivamente.
 - Tema claro/oscuro con variables CSS y el atributo `data-theme` en `<html>`, sin dependencias nuevas.
 - Hash de contraseñas con Web Crypto API (PBKDF2) y UUID con `crypto.randomUUID()`.
+- Cifrado de los datos con Web Crypto API (AES-GCM-256) y clave derivada de la contraseña; sin dependencias criptográficas nuevas.
 - Cero llamadas de red: sin `fetch`, sin backend y sin telemetría.
-- Pruebas con Vitest y React Testing Library que cubran registro, inicio de sesión, crear/editar/eliminar ítem, marcar como comprado, las agrupaciones por prioridad y lugar, y la persistencia del tema. En `src/test/utils.tsx` hay utilidades compartidas (`renderApp`, seeds); jsdom no trae Web Crypto, así que `vitest.setup.ts` usa la de Node.
+- Pruebas con Vitest y React Testing Library que cubran registro, inicio de sesión, crear/editar/eliminar ítem, marcar como comprado, las agrupaciones por prioridad y lugar, la persistencia del tema y el cifrado de los datos (roundtrip AES-GCM, IV distinto por escritura, migración de datos en claro y ausencia de texto plano en `localStorage`). En `src/test/utils.tsx` hay utilidades compartidas (`renderApp`, seeds); jsdom no trae Web Crypto, así que `vitest.setup.ts` usa la de Node.
 - Accesibilidad básica: etiquetas en todos los campos, foco visible y contraste suficiente en ambos temas.
 - Entorno de desarrollo en devcontainer (`.devcontainer/devcontainer.json`); las dependencias se instalan dentro del contenedor y no se instala nada en el host.
 - Diseño responsive con CSS plano, media queries y container queries (mobile-first), sin librería de componentes UI; la app debe ser usable en pantallas de PC y de móvil.
@@ -142,6 +152,7 @@ Tres niveles ordenados de mayor a menor urgencia: `alta`, `media` (valor por def
 
 - [ ] Sin sesión iniciada no es posible ver ni modificar ningún dato.
 - [ ] El registro guarda únicamente el hash de la contraseña, nunca la contraseña en claro.
+- [ ] Los datos de los usuarios en `localStorage` están cifrados con una clave derivada de la contraseña.
 - [ ] Los ítems se crean, editan y eliminan, y al marcarlos como comprados desaparecen.
 - [ ] Existen vistas ordenadas por prioridad y agrupadas por lugar de compra.
 - [ ] Tras recargar la página los datos siguen disponibles.
